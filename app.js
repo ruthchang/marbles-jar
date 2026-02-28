@@ -157,10 +157,18 @@ function renderSyncUI() {
     const formEl = document.getElementById('syncAuthForm');
     const hintEl = document.getElementById('syncHint');
     if (!statusEl || !formEl) return;
+    const syncBadge = document.getElementById('syncBadge');
+    const setSyncBadge = (text, cls) => {
+        if (!syncBadge) return;
+        syncBadge.textContent = text;
+        syncBadge.classList.remove('sync-in', 'sync-out', 'sync-off', 'sync-unknown');
+        syncBadge.classList.add(cls);
+    };
 
     if (typeof Sync === 'undefined' || !Sync.isConfigured || !Sync.isConfigured()) {
         statusEl.innerHTML = '<p class="sync-hint">Add Supabase URL and anon key to sync-config.js to enable sync.</p>';
         formEl.style.display = 'none';
+        setSyncBadge('Sync: Not Configured', 'sync-off');
         return;
     }
 
@@ -174,6 +182,7 @@ function renderSyncUI() {
             `;
             formEl.style.display = 'none';
             hintEl.textContent = 'Your jar syncs across devices when you sign in.';
+            setSyncBadge('Sync: Signed In', 'sync-in');
             statusEl.querySelector('#syncSignOutBtn')?.addEventListener('click', async () => {
                 await Sync.signOut();
                 onSyncAuthChange(false, null);
@@ -182,6 +191,7 @@ function renderSyncUI() {
             statusEl.innerHTML = '';
             formEl.style.display = 'block';
             hintEl.textContent = 'Sign in to sync your jar across devices.';
+            setSyncBadge('Sync: Signed Out', 'sync-out');
             const signInBtn = document.getElementById('syncSignInBtn');
             const signUpBtn = document.getElementById('syncSignUpBtn');
             if (signInBtn && !signInBtn._bound) { signInBtn._bound = true; signInBtn.addEventListener('click', handleSignIn); }
