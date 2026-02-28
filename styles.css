@@ -1436,3 +1436,22 @@ header h1 {
     transform: rotate(-45deg);
     height: 40px;
 }
+
+/* Keep lid proportions correct on small mobile/PWA screens.
+   This block is intentionally at file end so it overrides shape defaults above. */
+@media (max-width: 500px) {
+    .jar-container.jar-classic .jar-lid { width: 83%; }
+    .jar-container.jar-classic .jar-lid::before { width: calc(100% + 6px); }
+
+    .jar-container.jar-round .jar-lid { width: 41%; }
+    .jar-container.jar-round .jar-lid::before { width: calc(100% + 2px); }
+
+    .jar-container.jar-tall .jar-lid { width: 59%; }
+    .jar-container.jar-tall .jar-lid::before { width: calc(100% + 5px); }
+
+    .jar-container.jar-wide .jar-lid { width: 96%; }
+    .jar-container.jar-wide .jar-lid::before { width: calc(100% + 6px); }
+
+    .jar-container.jar-heart .jar-lid { width: 36%; }
+    .jar-container.jar-heart .jar-lid::before { width: calc(100% + 6px); }
+}

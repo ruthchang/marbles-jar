@@ -1,4 +1,4 @@
-const CACHE_NAME = "habit-jar-v5";
+const CACHE_NAME = "habit-jar-v6";
 const CORE_ASSETS = [
   "/",
   "/index.html",
