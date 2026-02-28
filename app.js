@@ -930,6 +930,9 @@ function playCollisionSound(intensity) {
 
 // Setup drag + device motion (no jar shake animation)
 function setupShakeInteraction() {
+    if (setupShakeInteraction._initialized) return;
+    setupShakeInteraction._initialized = true;
+
     const container = document.getElementById('jarContainer');
     const shakeHint = document.getElementById('shakeHint');
     let isDragging = false;
@@ -990,12 +993,64 @@ function setupShakeInteraction() {
     document.addEventListener('touchmove', moveDrag, { passive: true });
     document.addEventListener('touchend', endDrag);
     
-    // Device motion (for mobile shake)
+    const defaultGravity = { x: 0, y: 0.8 };
+    const gravityStrength = 0.9;
+
+    // Sensor motion (for mobile shake + tilt gravity)
     let motionEnabled = false;
+    let orientationEnabled = false;
     let lastMotionAt = 0;
     let lastMotionX = null;
     let lastMotionY = null;
     let lastMotionZ = null;
+    let filteredGravityX = defaultGravity.x;
+    let filteredGravityY = defaultGravity.y;
+
+    function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    function setEngineGravity(x, y) {
+        if (!engine || !engine.gravity) return;
+        engine.gravity.x = x;
+        engine.gravity.y = y;
+    }
+
+    function getOrientationAngle() {
+        if (window.screen?.orientation && typeof window.screen.orientation.angle === 'number') {
+            return window.screen.orientation.angle;
+        }
+        if (typeof window.orientation === 'number') {
+            return window.orientation;
+        }
+        return 0;
+    }
+
+    function orientationToGravity(beta, gamma) {
+        const angle = ((getOrientationAngle() % 360) + 360) % 360;
+        const b = clamp((beta || 0) / 45, -1, 1);
+        const g = clamp((gamma || 0) / 45, -1, 1);
+
+        let gx = 0;
+        let gy = 0;
+
+        // Map screen orientation so "tilt down" always means gravity follows tilt.
+        if (angle === 90) {
+            gx = b;
+            gy = -g;
+        } else if (angle === 270) {
+            gx = -b;
+            gy = g;
+        } else if (angle === 180) {
+            gx = -g;
+            gy = -b;
+        } else {
+            gx = g;
+            gy = b;
+        }
+
+        return { x: gx * gravityStrength, y: gy * gravityStrength };
+    }
 
     function handleDeviceMotion(e) {
         if (!motionEnabled) return;
@@ -1038,32 +1093,68 @@ function setupShakeInteraction() {
         });
     }
 
+    function handleDeviceOrientation(e) {
+        if (!orientationEnabled) return;
+        if (e.beta == null || e.gamma == null) return;
+
+        const target = orientationToGravity(e.beta, e.gamma);
+
+        // Low-pass filter to avoid jittery motion from sensor noise.
+        filteredGravityX = filteredGravityX * 0.85 + target.x * 0.15;
+        filteredGravityY = filteredGravityY * 0.85 + target.y * 0.15;
+        setEngineGravity(filteredGravityX, filteredGravityY);
+    }
+
     function enableMotion() {
         if (motionEnabled) return;
         motionEnabled = true;
         window.addEventListener('devicemotion', handleDeviceMotion);
     }
 
-    async function requestMotionPermission() {
-        if (!window.DeviceMotionEvent) return;
+    function enableOrientation() {
+        if (orientationEnabled) return;
+        orientationEnabled = true;
+        window.addEventListener('deviceorientation', handleDeviceOrientation);
+    }
 
-        // iOS 13+ requires an explicit user-gesture permission request.
-        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+    async function requestSensorPermission() {
+        if (!window.DeviceMotionEvent && !window.DeviceOrientationEvent) return;
+
+        let motionGranted = false;
+        let orientationGranted = false;
+
+        // iOS 13+ requires explicit permission for both motion and orientation.
+        if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
             try {
-                const result = await DeviceMotionEvent.requestPermission();
-                if (result === 'granted') enableMotion();
+                motionGranted = (await DeviceMotionEvent.requestPermission()) === 'granted';
             } catch (err) {
                 console.warn('Motion permission request failed:', err);
             }
-            return;
+        } else if (window.DeviceMotionEvent) {
+            motionGranted = true;
         }
 
-        enableMotion();
+        if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+                orientationGranted = (await DeviceOrientationEvent.requestPermission()) === 'granted';
+            } catch (err) {
+                console.warn('Orientation permission request failed:', err);
+            }
+        } else if (window.DeviceOrientationEvent) {
+            orientationGranted = true;
+        }
+
+        if (motionGranted) enableMotion();
+        if (orientationGranted) enableOrientation();
+        if (!orientationGranted) {
+            // Keep original gravity if tilt control is unavailable.
+            setEngineGravity(defaultGravity.x, defaultGravity.y);
+        }
     }
 
-    requestMotionPermission();
-    container.addEventListener('touchstart', requestMotionPermission, { passive: true });
-    container.addEventListener('click', requestMotionPermission);
+    requestSensorPermission();
+    container.addEventListener('touchstart', requestSensorPermission, { passive: true });
+    container.addEventListener('click', requestSensorPermission);
 }
 
 // Double-click marble to zoom in for a closer look
