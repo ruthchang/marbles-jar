@@ -995,7 +995,7 @@ header h1 {
 /* Sound Theme Picker */
 .sound-theme-picker {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
     gap: 8px;
 }
 
@@ -1016,6 +1016,8 @@ header h1 {
     cursor: pointer;
     transition: all 0.2s ease;
     text-align: center;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .sound-option-icon {
@@ -1172,6 +1174,11 @@ header h1 {
 .settings-group .jar-type-picker,
 .settings-group .sound-theme-picker {
     grid-template-columns: repeat(4, 1fr);
+}
+
+/* Let sound tiles reflow naturally in tight mobile/PWA widths */
+.settings-group .sound-theme-picker {
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
 }
 
 /* Sync section */
