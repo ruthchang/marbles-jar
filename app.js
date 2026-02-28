@@ -991,27 +991,79 @@ function setupShakeInteraction() {
     document.addEventListener('touchend', endDrag);
     
     // Device motion (for mobile shake)
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', (e) => {
-            const acceleration = e.accelerationIncludingGravity;
-            if (!acceleration) return;
-            
-            const threshold = 15;
-            const shake = Math.abs(acceleration.x) + Math.abs(acceleration.y);
-            
-            if (shake > threshold) {
-                shakeHint.classList.add('hidden');
-                
-                marbleBodies.forEach(marble => {
-                    Body.applyForce(marble, marble.position, {
-                        x: acceleration.x * 0.0005,
-                        y: -acceleration.y * 0.0003
-                    });
-                });
-                
-            }
+    let motionEnabled = false;
+    let lastMotionAt = 0;
+    let lastMotionX = null;
+    let lastMotionY = null;
+    let lastMotionZ = null;
+
+    function handleDeviceMotion(e) {
+        if (!motionEnabled) return;
+        const acceleration = e.accelerationIncludingGravity || e.acceleration;
+        if (!acceleration) return;
+
+        const x = acceleration.x || 0;
+        const y = acceleration.y || 0;
+        const z = acceleration.z || 0;
+
+        if (lastMotionX === null) {
+            lastMotionX = x;
+            lastMotionY = y;
+            lastMotionZ = z;
+            return;
+        }
+
+        const deltaX = Math.abs(x - lastMotionX);
+        const deltaY = Math.abs(y - lastMotionY);
+        const deltaZ = Math.abs(z - lastMotionZ);
+        const shakeStrength = deltaX + deltaY + deltaZ;
+
+        lastMotionX = x;
+        lastMotionY = y;
+        lastMotionZ = z;
+
+        const now = Date.now();
+        const threshold = 12;
+        const cooldownMs = 200;
+        if (shakeStrength < threshold || now - lastMotionAt < cooldownMs) return;
+
+        lastMotionAt = now;
+        shakeHint.classList.add('hidden');
+
+        marbleBodies.forEach(marble => {
+            Body.applyForce(marble, marble.position, {
+                x: x * 0.0007,
+                y: -y * 0.0006
+            });
         });
     }
+
+    function enableMotion() {
+        if (motionEnabled) return;
+        motionEnabled = true;
+        window.addEventListener('devicemotion', handleDeviceMotion);
+    }
+
+    async function requestMotionPermission() {
+        if (!window.DeviceMotionEvent) return;
+
+        // iOS 13+ requires an explicit user-gesture permission request.
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+            try {
+                const result = await DeviceMotionEvent.requestPermission();
+                if (result === 'granted') enableMotion();
+            } catch (err) {
+                console.warn('Motion permission request failed:', err);
+            }
+            return;
+        }
+
+        enableMotion();
+    }
+
+    requestMotionPermission();
+    container.addEventListener('touchstart', requestMotionPermission, { passive: true });
+    container.addEventListener('click', requestMotionPermission);
 }
 
 // Double-click marble to zoom in for a closer look
