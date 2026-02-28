@@ -126,6 +126,8 @@ let audioCtx = null;
 let engine, render, runner;
 let jarWalls = [];
 let marbleBodies = [];
+let restoreTimer = null;
+let restoreMarbleTimers = [];
 
 // Image cache for sprites
 const imageCache = {};
@@ -268,8 +270,8 @@ async function init() {
         window.onSyncAuthChange = onSyncAuthChange;
     }
 
-    // Delay marble restoration to allow images to load
-    setTimeout(restoreMarbles, 500);
+    // Delay collectible restoration briefly after physics init.
+    scheduleRestoreMarbles(500);
 }
 
 // Apply jar type CSS class
@@ -366,21 +368,28 @@ function rebuildPhysics() {
     marbleBodies = [];
     
     setupPhysics();
-    setTimeout(restoreMarbles, 100);
+    scheduleRestoreMarbles(100);
 }
 
 // Apply parsed/remote state to app state (with migration)
 function applyStateData(parsed) {
     if (!parsed) return;
+    const typeMap = {
+        ocean: 'seaLife'
+    };
+    const normalizeType = (type) => typeMap[type] || type;
     const allTypes = Object.keys(collectibles);
     state.habits = parsed.habits || [];
-    state.marbles = parsed.marbles || [];
-    state.collectibleType = parsed.collectibleType || 'marble';
+    state.marbles = (parsed.marbles || []).map(marble => ({
+        ...marble,
+        type: normalizeType(marble.type)
+    }));
+    state.collectibleType = normalizeType(parsed.collectibleType || 'marble');
     state.enabledCollectibles = Array.isArray(parsed.enabledCollectibles)
-        ? parsed.enabledCollectibles.filter(k => collectibles[k])
+        ? [...new Set(parsed.enabledCollectibles.map(normalizeType))].filter(k => collectibles[k])
         : allTypes;
     if (state.enabledCollectibles.length === 0) state.enabledCollectibles = allTypes;
-    state.totalMarbles = parsed.totalMarbles ?? state.marbles.length;
+    state.totalMarbles = state.marbles.length;
     state.pendingMarbles = parsed.pendingMarbles || 0;
     state.jarType = jarTypes[parsed.jarType] ? parsed.jarType : 'classic';
     state.jarCapacity = Math.min(200, Math.max(10, parsed.jarCapacity ?? 50));
@@ -1313,23 +1322,13 @@ function addMarble(type) {
         const imageIndex = Math.floor(Math.random() * config.images.length);
         imageUrl = config.images[imageIndex];
         itemName = config.itemNames?.[imageIndex] || '';
-        const cachedImage = imageCache[imageUrl];
-        
-        if (cachedImage) {
-            renderOptions = {
-                sprite: {
-                    texture: imageUrl,
-                    xScale: (radius * 2) / 128,
-                    yScale: (radius * 2) / 128
-                }
-            };
-        } else {
-            renderOptions = {
-                fillStyle: fallbackColor,
-                strokeStyle: darkenColor(fallbackColor, 20),
-                lineWidth: 2
-            };
-        }
+        renderOptions = {
+            sprite: {
+                texture: imageUrl,
+                xScale: (radius * 2) / 128,
+                yScale: (radius * 2) / 128
+            }
+        };
     }
     
     const marble = Bodies.circle(x, y, radius, {
@@ -1417,6 +1416,16 @@ function createMarbleTexture(baseColor, size) {
 
 // Restore marbles from saved state
 function restoreMarbles() {
+    // Cancel staged timers from previous restore attempts.
+    restoreMarbleTimers.forEach((timerId) => clearTimeout(timerId));
+    restoreMarbleTimers = [];
+
+    // Ensure we don't duplicate physics bodies if restore is triggered twice.
+    if (engine && marbleBodies.length > 0) {
+        marbleBodies.forEach((body) => Composite.remove(engine.world, body));
+        marbleBodies = [];
+    }
+
     const container = document.getElementById('jarContainer');
     const width = container.offsetWidth;
     const height = container.offsetHeight;
@@ -1424,7 +1433,7 @@ function restoreMarbles() {
     const currentSize = getMarbleSize();
     
     state.marbles.forEach((marbleData, index) => {
-        setTimeout(() => {
+        const timerId = setTimeout(() => {
             const x = bounds.left + 20 + Math.random() * (bounds.right - bounds.left - 40);
             const y = bounds.top + 20 + (index * 2) % 60;
             
@@ -1444,8 +1453,7 @@ function restoreMarbles() {
                     }
                 };
             } else {
-                const cachedImage = imageCache[marbleData.imageUrl];
-                if (cachedImage) {
+                if (marbleData.imageUrl) {
                     renderOptions = {
                         sprite: {
                             texture: marbleData.imageUrl,
@@ -1483,7 +1491,16 @@ function restoreMarbles() {
             Composite.add(engine.world, marble);
             marbleBodies.push(marble);
         }, index * 50);
+        restoreMarbleTimers.push(timerId);
     });
+}
+
+function scheduleRestoreMarbles(delay = 0) {
+    if (restoreTimer) clearTimeout(restoreTimer);
+    restoreTimer = setTimeout(() => {
+        restoreTimer = null;
+        restoreMarbles();
+    }, delay);
 }
 
 // Play sound when adding marble
