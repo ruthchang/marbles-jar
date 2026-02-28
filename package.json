@@ -1,0 +1,14 @@
+{
+  "name": "marbles",
+  "version": "1.0.0",
+  "description": "A delightful habit tracking app where you collect cute marbles (and other collectibles) as rewards for completing your daily habits.",
+  "main": "app.js",
+  "scripts": {
+    "dev": "python3 dev-server.py --port 5500",
+    "start": "python3 dev-server.py --port 5500",
+    "test": "echo \"No tests configured\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

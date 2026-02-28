@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#fd79a8">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Collection - Habit Jar</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="collection.css?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <a href="index.html" class="back-link">← Back to Jar</a>
+            <h1>Collection</h1>
+            <p class="subtitle">All the cute things you can collect!</p>
+        </header>
+
+        <main>
+            <div class="collection-stats">
+                <div class="stat-card">
+                    <span class="stat-number" id="totalCollected">0</span>
+                    <span class="stat-label">Collected</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" id="totalAvailable">0</span>
+                    <span class="stat-label">Available</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" id="completionPercent">0%</span>
+                    <span class="stat-label">Complete</span>
+                </div>
+            </div>
+
+            <div class="collection-grid" id="collectionGrid">
+                <!-- Categories will be dynamically inserted -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Collectible Detail Modal -->
+    <div class="collectible-detail-overlay" id="collectibleDetailOverlay" aria-hidden="true">
+        <div class="collectible-detail-modal">
+            <button class="collectible-detail-close" id="collectibleDetailClose" aria-label="Close">×</button>
+            <div class="collectible-detail-content" id="collectibleDetailContent">
+                <!-- Injected by JS: image/gradient, name, description -->
+            </div>
+        </div>
+    </div>
+    <script src="utils.js"></script>
+    <script src="livereload.js"></script>
+    <script src="collectibles-data.js"></script>
+    <script src="collection.js"></script>
+    <script src="pwa-register.js"></script>
+</body>
+<footer>
+<p class="attribution"><a href="https://www.flaticon.com/free-icons" title="icons">Icons created by Freepik - Flaticon</a></p>
+</footer>
+</html>

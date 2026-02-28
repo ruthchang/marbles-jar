@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#fd79a8">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Habit Jar - Marble Count</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="stylesheet" href="styles.css?v=18">
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Habit Jar</h1>
+            <p class="subtitle">Fill your jar, one habit at a time</p>
+            <div class="header-actions">
+                <a href="collection.html" class="collection-link">View Collection</a>
+                <button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
+            </div>
+        </header>
+
+        <main>
+            <div class="jar-section">
+                <div class="jar-container jar-classic" id="jarContainer">
+                    <canvas id="jarCanvas"></canvas>
+                    <div class="jar-overlay">
+                        <div class="jar-glass"></div>
+                        <div class="jar-lid"></div>
+                        <div class="jar-shine"></div>
+                    </div>
+                    <div class="shake-hint" id="shakeHint">
+                        <span>👆 Drag or shake!</span>
+                    </div>
+                </div>
+                <div class="jar-stats">
+                    <span id="marbleCount">0</span> marbles collected
+                </div>
+                <button class="add-pending-btn" id="addPendingBtn">
+                    <span class="pending-icon">💤</span> Complete habits to earn marbles
+                </button>
+            </div>
+
+            <div class="habits-section">
+                <div class="section-header">
+                    <h2>Habit</h2>
+                    <button class="add-habit-btn" id="addHabitBtn">+ Add Habit</button>
+                </div>
+                <div class="habits-list" id="habitsList">
+                    <!-- Habits will be dynamically inserted -->
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Settings Page -->
+        <div class="settings-page" id="settingsPage">
+            <div class="settings-header">
+                <button class="settings-back-btn" id="settingsBackBtn">← Back</button>
+                <h2>Settings</h2>
+            </div>
+            <div class="settings-content">
+                <div class="settings-group">
+                    <h3>Choose Your Collectible</h3>
+                    <div class="collectible-picker" id="collectiblePicker">
+                        <!-- Collectibles will be dynamically rendered -->
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Collision Sounds</h3>
+                    <div class="sound-theme-picker" id="soundThemePicker">
+                        <!-- Sound themes will be dynamically rendered -->
+                    </div>
+                </div>
+
+                <div class="settings-group" id="syncGroup">
+                    <h3>Sync Across Devices</h3>
+                    <div id="syncStatus">
+                        <!-- Rendered by app.js -->
+                    </div>
+                    <div id="syncAuthForm" class="sync-auth-form" style="display: none;">
+                        <input type="email" id="syncEmail" placeholder="Email" autocomplete="email">
+                        <input type="password" id="syncPassword" placeholder="Password" autocomplete="current-password">
+                        <div class="sync-auth-buttons">
+                            <button type="button" class="sync-btn" id="syncSignInBtn">Sign In</button>
+                            <button type="button" class="sync-btn sync-btn-secondary" id="syncSignUpBtn">Sign Up</button>
+                        </div>
+                    </div>
+                    <p class="sync-hint" id="syncHint">Sign in to sync your jar across devices.</p>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Data</h3>
+                    <button class="danger-btn" id="settingsResetBtn">🗑️ Empty Jar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marble Zoom Modal -->
+        <div class="marble-zoom-overlay" id="marbleZoomOverlay" aria-hidden="true">
+            <div class="marble-zoom-modal">
+                <button class="marble-zoom-close" id="marbleZoomClose" aria-label="Close">×</button>
+                <div class="marble-zoom-content" id="marbleZoomContent">
+                    <!-- Marble preview injected by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Habit Modal -->
+        <div class="modal-overlay" id="modalOverlay">
+            <div class="modal">
+                <h3>Add New Habit</h3>
+                <input type="text" id="habitInput" placeholder="Enter habit name..." maxlength="50">
+                <div class="times-input-row">
+                    <label for="habitTimesInput">Times per day:</label>
+                    <div class="times-stepper">
+                        <button type="button" class="stepper-btn" onclick="decrementTimes()">−</button>
+                        <input type="number" id="habitTimesInput" value="1" min="1" max="99">
+                        <button type="button" class="stepper-btn" onclick="incrementTimes()">+</button>
+                    </div>
+                </div>
+                <div class="modal-buttons">
+                    <button class="modal-cancel" id="modalCancel">Cancel</button>
+                    <button class="modal-confirm" id="modalConfirm">Add Habit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="livereload.js"></script>
+    <script src="utils.js"></script>
+    <script src="collectibles-data.js?v=5"></script>
+    <script src="sync-config.js?v=1"></script>
+    <script src="sync.js?v=1"></script>
+    <script src="app.js?v=26"></script>
+    <script src="pwa-register.js"></script>
+</body>
+</html>
