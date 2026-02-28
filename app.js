@@ -172,22 +172,35 @@ function renderSyncUI() {
         return;
     }
 
-    Sync.getSession().then(session => {
-        if (session) {
-            statusEl.innerHTML = `
-                <div class="sync-signed-in">
-                    <span>Signed in as ${escapeHtml(session.user.email || 'user')}</span>
-                    <button type="button" class="sync-sign-out-btn" id="syncSignOutBtn">Sign Out</button>
-                </div>
-            `;
-            formEl.style.display = 'none';
-            hintEl.textContent = 'Your jar syncs across devices when you sign in.';
-            setSyncBadge('Sync: Signed In', 'sync-in');
-            statusEl.querySelector('#syncSignOutBtn')?.addEventListener('click', async () => {
-                await Sync.signOut();
-                onSyncAuthChange(false, null);
-            });
-        } else {
+    Sync.getSession()
+        .then(session => {
+            if (session) {
+                statusEl.innerHTML = `
+                    <div class="sync-signed-in">
+                        <span>Signed in as ${escapeHtml(session.user.email || 'user')}</span>
+                        <button type="button" class="sync-sign-out-btn" id="syncSignOutBtn">Sign Out</button>
+                    </div>
+                `;
+                formEl.style.display = 'none';
+                hintEl.textContent = 'Your jar syncs across devices when you sign in.';
+                setSyncBadge('Sync: Signed In', 'sync-in');
+                statusEl.querySelector('#syncSignOutBtn')?.addEventListener('click', async () => {
+                    await Sync.signOut();
+                    onSyncAuthChange(false, null);
+                });
+            } else {
+                statusEl.innerHTML = '';
+                formEl.style.display = 'block';
+                hintEl.textContent = 'Sign in to sync your jar across devices.';
+                setSyncBadge('Sync: Signed Out', 'sync-out');
+                const signInBtn = document.getElementById('syncSignInBtn');
+                const signUpBtn = document.getElementById('syncSignUpBtn');
+                if (signInBtn && !signInBtn._bound) { signInBtn._bound = true; signInBtn.addEventListener('click', handleSignIn); }
+                if (signUpBtn && !signUpBtn._bound) { signUpBtn._bound = true; signUpBtn.addEventListener('click', handleSignUp); }
+            }
+        })
+        .catch((err) => {
+            console.warn('Failed to resolve sync session state:', err);
             statusEl.innerHTML = '';
             formEl.style.display = 'block';
             hintEl.textContent = 'Sign in to sync your jar across devices.';
@@ -196,8 +209,7 @@ function renderSyncUI() {
             const signUpBtn = document.getElementById('syncSignUpBtn');
             if (signInBtn && !signInBtn._bound) { signInBtn._bound = true; signInBtn.addEventListener('click', handleSignIn); }
             if (signUpBtn && !signUpBtn._bound) { signUpBtn._bound = true; signUpBtn.addEventListener('click', handleSignUp); }
-        }
-    });
+        });
 }
 
 async function handleSignIn() {
