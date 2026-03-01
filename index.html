@@ -16,7 +16,10 @@
     <div class="app-container">
         <header>
             <h1>Marble Jar</h1>
-            <p class="subtitle">Tap the lid to add a marble</p>
+            <div class="subtitle-row">
+                <p class="subtitle">Tap the lid to add a marble</p>
+                <button type="button" class="undo-marble-btn header-undo-btn" id="undoMarbleBtn" title="Undo last marble" aria-label="Undo last marble"><img class="undo-btn-icon" src="https://cdn-icons-png.flaticon.com/128/1694/1694021.png" alt=""></button>
+            </div>
         </header>
 
         <main>
@@ -29,20 +32,28 @@
                         <div class="jar-shine"></div>
                     </div>
                     <div class="shake-hint" id="shakeHint">
-                        <span>👆 Drag or shake!</span>
+                        <span class="shake-hint-text"><img class="shake-hint-icon" src="https://cdn-icons-png.flaticon.com/128/456/456291.png" alt=""> Drag</span>
+                        <span class="zoom-hint-slot" id="zoomHintSlot">
+                            <button type="button" class="zoom-jar-btn" id="zoomJarBtn" title="Zoom in jar" aria-label="Zoom in jar" aria-pressed="false">Zoom In</button>
+                        </span>
                     </div>
                 </div>
+                <div class="zoom-center-row" id="zoomCenterSlot"></div>
                 <div class="jar-stats">
                     <span id="marbleCount">0</span> <span id="marbleCountLabel">marbles collected</span>
-                    <button type="button" class="undo-marble-btn" id="undoMarbleBtn" title="Undo last marble" aria-label="Undo last marble"><img class="undo-btn-icon" src="https://cdn-icons-png.flaticon.com/128/225/225453.png" alt=""></button>
                 </div>
-                <div class="header-actions">
-                    <a href="collection.html" class="collection-link">View Collection</a>
-                    <button class="settings-btn" id="settingsBtn" title="Settings"><img class="settings-btn-icon" src="https://cdn-icons-png.flaticon.com/128/1790/1790071.png" alt=""></button>
+                <div class="menu-dock" id="frontControls">
+                    <button type="button" class="menu-toggle-btn" id="menuToggleBtn" aria-expanded="false" aria-controls="frontMenu">Menu</button>
                 </div>
-                <div class="sync-badge sync-unknown" id="syncBadge">Sync: Checking...</div>
             </div>
         </main>
+
+        <div class="menu-backdrop" id="menuBackdrop" aria-hidden="true"></div>
+        <div class="front-menu" id="frontMenu">
+            <a href="collection.html" class="menu-link" id="menuCollectionLink">View Collection</a>
+            <button type="button" class="menu-link settings-menu-btn" id="settingsBtn" title="Settings"><img class="settings-btn-icon" src="https://cdn-icons-png.flaticon.com/128/1790/1790071.png" alt=""> Settings</button>
+            <button type="button" class="sync-badge sync-unknown" id="syncBadge">Sync: Checking...</button>
+        </div>
 
         <!-- Settings Page -->
         <div class="settings-page" id="settingsPage">
@@ -107,6 +118,17 @@
                 <div class="marble-zoom-content" id="marbleZoomContent">
                     <!-- Marble preview injected by JS -->
                 </div>
+            </div>
+        </div>
+
+        <!-- Jar Inspect Zoom Overlay -->
+        <div class="jar-inspect-overlay" id="jarInspectOverlay" aria-hidden="true">
+            <div class="jar-inspect-modal">
+                <button class="jar-inspect-close" id="jarInspectClose" aria-label="Close">×</button>
+                <div class="jar-inspect-viewport" id="jarInspectViewport">
+                    <canvas id="jarInspectCanvas"></canvas>
+                </div>
+                <p class="jar-inspect-hint">Drag to pan</p>
             </div>
         </div>
 

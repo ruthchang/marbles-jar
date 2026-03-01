@@ -61,6 +61,13 @@ header h1 {
     font-weight: 500;
 }
 
+.subtitle-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
 .collection-link {
     display: inline-block;
     margin-top: 12px;
@@ -307,6 +314,9 @@ header h1 {
     bottom: -25px;
     left: 50%;
     transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     background: transparent;
     padding: 0;
     border-radius: 0;
@@ -330,6 +340,25 @@ header h1 {
     pointer-events: none;
 }
 
+.shake-hint-icon {
+    width: 12px;
+    height: 12px;
+    object-fit: contain;
+    vertical-align: -1px;
+    margin-right: 4px;
+}
+
+.shake-hint-text {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 0;
+    border-bottom: 1px dashed rgba(26, 163, 157, 0.55);
+    color: rgba(15, 111, 106, 0.92);
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
 .jar-stats {
     margin-top: 35px;
     font-size: 1.2rem;
@@ -342,18 +371,44 @@ header h1 {
     font-size: 1.5rem;
 }
 
+.front-controls {
+    width: auto;
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.front-quick-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .undo-marble-btn {
-    margin-left: 8px;
-    width: 30px;
-    height: 30px;
-    border: 1px solid rgba(0, 0, 0, 0.16);
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.75);
+    width: auto;
+    height: auto;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     color: #53605f;
     font-size: 1.05rem;
     line-height: 1;
     cursor: pointer;
-    transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+    padding: 0;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.header-undo-btn {
+    width: auto;
+    height: auto;
+    opacity: 0.78;
+}
+
+.header-undo-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    opacity: 1;
 }
 
 .undo-marble-btn:hover:not(:disabled) {
@@ -370,6 +425,297 @@ header h1 {
     width: 16px;
     height: 16px;
     object-fit: contain;
+}
+
+.zoom-jar-btn {
+    height: auto;
+    padding: 1px 0;
+    border: none;
+    border-bottom: 1px dashed rgba(26, 163, 157, 0.55);
+    border-radius: 0;
+    background: transparent;
+    color: rgba(15, 111, 106, 0.92);
+    font-family: inherit;
+    font-size: 0.76rem;
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1.2;
+    transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.zoom-jar-btn:hover {
+    transform: translateY(-1px);
+    border-bottom-color: rgba(26, 163, 157, 0.85);
+    opacity: 1;
+}
+
+.zoom-jar-btn.active {
+    border-bottom-style: solid;
+    border-bottom-color: rgba(15, 111, 106, 0.95);
+    color: #0f6f6a;
+}
+
+.zoom-hint-slot,
+.zoom-center-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.zoom-center-row {
+    margin-top: 4px;
+    min-height: 32px;
+}
+
+.zoom-hint-slot .zoom-jar-btn {
+    height: auto;
+    padding: 0;
+    font-size: 0.72rem;
+    opacity: 0.82;
+}
+
+.zoom-center-row .zoom-jar-btn {
+    height: auto;
+    padding: 2px 0;
+    font-size: 0.78rem;
+    opacity: 0.88;
+}
+
+.menu-toggle-btn {
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid rgba(0, 0, 0, 0.16);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.78);
+    color: #53605f;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.menu-toggle-btn:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.menu-toggle-btn[aria-expanded="true"] {
+    background: rgba(26, 163, 157, 0.16);
+    border-color: rgba(26, 163, 157, 0.45);
+    color: #0f6f6a;
+}
+
+.menu-dock {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    z-index: 1700;
+}
+
+.menu-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(29, 39, 38, 0.34);
+    z-index: 1600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.menu-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.front-menu {
+    width: min(340px, calc(100vw - 24px));
+    position: fixed;
+    left: 50%;
+    bottom: calc(max(14px, env(safe-area-inset-bottom)) + 120px);
+    transform: translateX(-50%) translateY(8px);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    max-height: 260px;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 1701;
+}
+
+.front-menu.open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+}
+
+.menu-link {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.86);
+    color: #31403f;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.menu-link:hover {
+    background: rgba(255, 255, 255, 0.98);
+    transform: translateY(-1px);
+}
+
+.settings-menu-btn {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.front-menu .sync-badge {
+    width: 100%;
+    margin-top: 0;
+    min-height: 38px;
+    border-radius: 12px;
+    justify-content: center;
+    font-size: 0.88rem;
+    letter-spacing: 0.01em;
+    background: #eef3f2;
+    color: #31403f;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: none;
+}
+
+.front-menu .sync-badge.sync-in {
+    background: #e7f4f2;
+    color: #1b6f69;
+    border-color: rgba(26, 163, 157, 0.35);
+}
+
+.front-menu .sync-badge.sync-out {
+    background: #edf0f0;
+    color: #4b5559;
+    border-color: rgba(99, 110, 114, 0.24);
+}
+
+.front-menu .sync-badge.sync-off,
+.front-menu .sync-badge.sync-unknown {
+    background: #e8f3f2;
+    color: #0f6f6a;
+    border-color: rgba(26, 163, 157, 0.3);
+}
+
+.jar-inspect-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2100;
+    align-items: center;
+    justify-content: center;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+
+.jar-inspect-overlay.active {
+    display: flex;
+}
+
+.jar-inspect-modal {
+    width: min(92vw, 520px);
+    max-height: calc(100vh - 24px);
+    background: linear-gradient(180deg, #f1fcfb 0%, #e8f8f6 100%);
+    border-radius: 20px;
+    padding: 14px 14px 12px;
+    position: relative;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+}
+
+.jar-inspect-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.1);
+    color: #44504f;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.jar-inspect-viewport {
+    width: min(100%, calc(100vh - 180px));
+    margin: 0 auto;
+    aspect-ratio: 1;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    cursor: grab;
+    touch-action: none;
+}
+
+.jar-inspect-viewport:active {
+    cursor: grabbing;
+}
+
+#jarInspectCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.jar-inspect-hint {
+    margin: 10px 2px 0;
+    font-size: 0.8rem;
+    color: #60706f;
+    text-align: center;
+}
+
+@media (max-width: 520px) {
+    .jar-inspect-modal {
+        border-radius: 16px;
+        padding: 12px 12px 10px;
+    }
+
+    .jar-inspect-close {
+        top: 6px;
+        right: 6px;
+        width: 32px;
+        height: 32px;
+    }
+
+    .jar-inspect-hint {
+        font-size: 0.76rem;
+        margin-top: 8px;
+    }
+}
+
+@media (max-height: 500px) {
+    .jar-inspect-modal {
+        width: min(86vh, 92vw);
+        padding: 10px;
+    }
+
+    .jar-inspect-viewport {
+        width: min(100%, calc(100vh - 120px));
+    }
+
+    .jar-inspect-hint {
+        display: none;
+    }
 }
 
 .jar-section .subtitle {
@@ -888,7 +1234,7 @@ header h1 {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.6);
-    z-index: 2000;
+    z-index: 2200;
     align-items: center;
     justify-content: center;
     padding: 20px;
