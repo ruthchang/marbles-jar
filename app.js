@@ -3,12 +3,10 @@ const { Engine, Render, Runner, Bodies, Body, Composite, Events, Query } = Matte
 
 // App State
 let state = {
-    habits: [],
     marbles: [],
     collectibleType: 'marble',
     enabledCollectibles: [], // Populated on init; which types can appear when randomly adding
     totalMarbles: 0,
-    pendingMarbles: 0,
     jarType: 'classic',
     jarCapacity: 50,
     soundTheme: 'default'
@@ -256,9 +254,7 @@ function onSyncAuthChange(signedIn, user) {
                 saveState();
                 applyJarType();
                 rebuildPhysics();
-                renderHabits();
                 updateMarbleCount();
-                updatePendingDisplay();
             }
         });
     }
@@ -282,12 +278,10 @@ async function init() {
     applyJarType();
     setupPhysics();
     setupEventListeners();
-    renderHabits();
     renderCollectibles();
     renderSoundSettings();
     renderSyncUI();
     updateMarbleCount();
-    updatePendingDisplay();
     if (typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
         window.onSyncAuthChange = onSyncAuthChange;
     }
@@ -401,7 +395,6 @@ function applyStateData(parsed) {
     };
     const normalizeType = (type) => typeMap[type] || type;
     const allTypes = Object.keys(collectibles);
-    state.habits = parsed.habits || [];
     state.marbles = (parsed.marbles || []).map(marble => ({
         ...marble,
         type: normalizeType(marble.type)
@@ -412,15 +405,9 @@ function applyStateData(parsed) {
         : allTypes;
     if (state.enabledCollectibles.length === 0) state.enabledCollectibles = allTypes;
     state.totalMarbles = state.marbles.length;
-    state.pendingMarbles = parsed.pendingMarbles || 0;
     state.jarType = jarTypes[parsed.jarType] ? parsed.jarType : 'classic';
     state.jarCapacity = Math.min(200, Math.max(10, parsed.jarCapacity ?? 50));
     state.soundTheme = parsed.soundTheme || 'default';
-    state.habits = state.habits.map(h => ({
-        ...h,
-        timesPerDay: h.timesPerDay || 1,
-        completedToday: h.completedToday || (h.completed ? 1 : 0)
-    }));
 }
 
 // Load state from localStorage
@@ -435,13 +422,6 @@ function loadState() {
     }
     if (state.enabledCollectibles.length === 0) {
         state.enabledCollectibles = Object.keys(collectibles);
-    }
-    const lastDate = localStorage.getItem('lastDate');
-    const today = new Date().toDateString();
-    if (lastDate !== today) {
-        state.habits.forEach(h => { h.completedToday = 0; });
-        localStorage.setItem('lastDate', today);
-        saveState();
     }
 }
 
@@ -840,12 +820,80 @@ function checkMarbleBounds() {
     const height = container.offsetHeight;
     
     const bounds = getJarBoundaries(width, height);
-    const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius } = bounds;
+    const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius, shape } = bounds;
     const centerX = width / 2;
     
     marbleBodies.forEach(marble => {
         const pos = marble.position;
+        const radius = marble.circleRadius || getMarbleSize() / 2;
+        const innerPad = 2;
+        const minX = jarLeft + radius + innerPad;
+        const maxX = jarRight - radius - innerPad;
+        const minY = jarTop + radius + innerPad;
+        const maxY = jarBottom - radius - innerPad;
         let needsReset = false;
+        let correctedX = pos.x;
+        let correctedY = pos.y;
+        let corrected = false;
+
+        // Keep each collectible fully inside the jar rectangle.
+        if (correctedX < minX) {
+            correctedX = minX;
+            corrected = true;
+        } else if (correctedX > maxX) {
+            correctedX = maxX;
+            corrected = true;
+        }
+        if (correctedY < minY) {
+            correctedY = minY;
+            corrected = true;
+        } else if (correctedY > maxY) {
+            correctedY = maxY;
+            corrected = true;
+        }
+
+        // Clamp to rounded bottom-corner arcs so items cannot cross the visible outline.
+        if (shape === 'classic' || shape === 'tall' || shape === 'wide') {
+            const arcRadius = Math.max(8, curveRadius - radius - innerPad);
+
+            // Left bottom corner quarter-circle
+            if (correctedX < jarLeft + curveRadius && correctedY > jarBottom - curveRadius) {
+                const cx = jarLeft + curveRadius;
+                const cy = jarBottom - curveRadius;
+                const dx = correctedX - cx;
+                const dy = correctedY - cy;
+                const dist = Math.hypot(dx, dy);
+                if (dist > arcRadius) {
+                    const scale = arcRadius / Math.max(dist, 0.0001);
+                    correctedX = cx + dx * scale;
+                    correctedY = cy + dy * scale;
+                    corrected = true;
+                }
+            }
+
+            // Right bottom corner quarter-circle
+            if (correctedX > jarRight - curveRadius && correctedY > jarBottom - curveRadius) {
+                const cx = jarRight - curveRadius;
+                const cy = jarBottom - curveRadius;
+                const dx = correctedX - cx;
+                const dy = correctedY - cy;
+                const dist = Math.hypot(dx, dy);
+                if (dist > arcRadius) {
+                    const scale = arcRadius / Math.max(dist, 0.0001);
+                    correctedX = cx + dx * scale;
+                    correctedY = cy + dy * scale;
+                    corrected = true;
+                }
+            }
+        }
+
+        if (corrected) {
+            Body.setPosition(marble, { x: correctedX, y: correctedY });
+            Body.setVelocity(marble, {
+                x: marble.velocity.x * -0.2,
+                y: marble.velocity.y * -0.2
+            });
+        }
         
         // Check if marble escaped bounds
         if (pos.x < jarLeft - 50 || pos.x > jarRight + 50 || 
@@ -968,6 +1016,10 @@ function setupShakeInteraction() {
     const shakeHint = document.getElementById('shakeHint');
     let isDragging = false;
     let hasMoved = false;
+    let dragStartTime = 0;
+    let dragStartPos = { x: 0, y: 0 };
+    const tapMaxDuration = 280;
+    const lidTapHeight = 72;
     const dragThreshold = 12;
     let lastX = 0, lastY = 0;
     let velocityX = 0, velocityY = 0;
@@ -975,9 +1027,11 @@ function setupShakeInteraction() {
     function startDrag(e) {
         isDragging = true;
         hasMoved = false;
+        dragStartTime = Date.now();
         const pos = getEventPosition(e);
         lastX = pos.x;
         lastY = pos.y;
+        dragStartPos = pos;
     }
     
     function moveDrag(e) {
@@ -1007,6 +1061,16 @@ function setupShakeInteraction() {
     }
     
     function endDrag() {
+        if (!isDragging) return;
+        const wasTap = !hasMoved && (Date.now() - dragStartTime) < tapMaxDuration;
+        if (wasTap) {
+            const rect = container.getBoundingClientRect();
+            const tapY = dragStartPos.y - rect.top;
+            if (tapY >= 0 && tapY <= lidTapHeight) {
+                addMarble();
+                shakeHint.classList.add('hidden');
+            }
+        }
         isDragging = false;
     }
     
@@ -1554,59 +1618,12 @@ function updateMarbleCount() {
     document.getElementById('marbleCount').textContent = state.totalMarbles;
 }
 
-// Update pending marbles display
-function updatePendingDisplay() {
-    const pendingBtn = document.getElementById('addPendingBtn');
-    if (!pendingBtn) return;
-    
-    if (state.pendingMarbles > 0) {
-        pendingBtn.classList.add('has-pending');
-        pendingBtn.innerHTML = `<span class="pending-icon">✨</span> Add ${state.pendingMarbles} marble${state.pendingMarbles > 1 ? 's' : ''}!`;
-    } else {
-        pendingBtn.classList.remove('has-pending');
-        pendingBtn.innerHTML = `<span class="pending-icon">💤</span> Complete habits to earn marbles`;
-    }
-}
-
-// Add all pending marbles to the jar
-function addPendingMarbles() {
-    if (state.pendingMarbles <= 0) return;
-    
-    const count = state.pendingMarbles;
-    state.pendingMarbles = 0;
-    saveState();
-    updatePendingDisplay();
-    
-    // Add marbles with a slight delay between each
-    for (let i = 0; i < count; i++) {
-        setTimeout(() => addMarble(), i * 200);
-    }
-}
-
 // Setup event listeners
 function setupEventListeners() {
-    // Add habit button
-    document.getElementById('addHabitBtn').addEventListener('click', showModal);
-    
-    // Modal buttons
-    document.getElementById('modalCancel').addEventListener('click', hideModal);
-    document.getElementById('modalConfirm').addEventListener('click', addHabit);
-    document.getElementById('modalOverlay').addEventListener('click', (e) => {
-        if (e.target.id === 'modalOverlay') hideModal();
-    });
-    
-    // Enter key in input
-    document.getElementById('habitInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') addHabit();
-    });
-    
-    // Add pending marbles button
-    document.getElementById('addPendingBtn').addEventListener('click', addPendingMarbles);
-    
     // Settings button - open settings page
-    document.getElementById('settingsBtn').addEventListener('click', openSettings);
-    document.getElementById('settingsBackBtn').addEventListener('click', closeSettings);
-    document.getElementById('settingsResetBtn').addEventListener('click', () => {
+    document.getElementById('settingsBtn')?.addEventListener('click', openSettings);
+    document.getElementById('settingsBackBtn')?.addEventListener('click', closeSettings);
+    document.getElementById('settingsResetBtn')?.addEventListener('click', () => {
         if (confirm('Empty your jar? This will remove all collected items.')) {
             clearAllMarbles();
         }
@@ -1623,135 +1640,6 @@ function openSettings() {
 function closeSettings() {
     document.getElementById('settingsPage').classList.remove('active');
     document.body.style.overflow = '';
-}
-
-// Show add habit modal
-function showModal() {
-    if (state.habits.length >= 1) return;
-    document.getElementById('modalOverlay').classList.add('active');
-    document.getElementById('habitInput').focus();
-}
-
-// Increment times per day
-function incrementTimes() {
-    const input = document.getElementById('habitTimesInput');
-    const current = parseInt(input.value) || 1;
-    input.value = Math.min(99, current + 1);
-}
-
-// Decrement times per day
-function decrementTimes() {
-    const input = document.getElementById('habitTimesInput');
-    const current = parseInt(input.value) || 1;
-    input.value = Math.max(1, current - 1);
-}
-
-// Hide add habit modal
-function hideModal() {
-    document.getElementById('modalOverlay').classList.remove('active');
-    document.getElementById('habitInput').value = '';
-    const timesInput = document.getElementById('habitTimesInput');
-    if (timesInput) timesInput.value = '1';
-}
-
-// Add a new habit
-function addHabit() {
-    if (state.habits.length >= 1) return;
-    const input = document.getElementById('habitInput');
-    const timesInput = document.getElementById('habitTimesInput');
-    const name = input.value.trim();
-    const timesPerDay = Math.max(1, parseInt(timesInput?.value) || 1);
-    
-    if (!name) return;
-    
-    state.habits.push({
-        id: Date.now(),
-        name: name,
-        timesPerDay: timesPerDay,
-        completedToday: 0
-    });
-    
-    saveState();
-    renderHabits();
-    hideModal();
-}
-
-// Delete a habit
-function deleteHabit(id) {
-    state.habits = state.habits.filter(h => h.id !== id);
-    saveState();
-    renderHabits();
-}
-
-// Complete a habit (add to completion count)
-function completeHabit(id) {
-    const habit = state.habits.find(h => h.id === id);
-    if (!habit) return;
-    
-    // Check if habit can still be completed today
-    if (habit.completedToday < habit.timesPerDay) {
-        habit.completedToday++;
-        state.pendingMarbles++;
-        saveState();
-        renderHabits();
-        updatePendingDisplay();
-    }
-}
-
-// Undo last completion of a habit
-function undoHabitCompletion(id) {
-    const habit = state.habits.find(h => h.id === id);
-    if (!habit || habit.completedToday <= 0) return;
-    
-    habit.completedToday--;
-    if (state.pendingMarbles > 0) {
-        state.pendingMarbles--;
-    }
-    saveState();
-    renderHabits();
-    updatePendingDisplay();
-}
-
-// Render habits list
-function renderHabits() {
-    const list = document.getElementById('habitsList');
-    
-    if (state.habits.length === 0) {
-        const addBtn = document.getElementById('addHabitBtn');
-        if (addBtn) addBtn.style.display = '';
-        list.innerHTML = `
-            <div class="empty-habits">
-                <span>🌱</span>
-                <p>Add your first habit to start collecting!</p>
-            </div>
-        `;
-        return;
-    }
-    
-    const addBtn = document.getElementById('addHabitBtn');
-    if (addBtn) addBtn.style.display = state.habits.length >= 1 ? 'none' : '';
-    
-    list.innerHTML = state.habits.map(habit => {
-        const isFullyCompleted = habit.completedToday >= habit.timesPerDay;
-        const progress = habit.timesPerDay > 1 ? `${habit.completedToday}/${habit.timesPerDay}` : '';
-        
-        return `
-            <div class="habit-item ${isFullyCompleted ? 'completed' : ''}" data-id="${habit.id}">
-                <button class="habit-checkbox ${habit.completedToday > 0 ? 'has-progress' : ''}" 
-                        onclick="completeHabit(${habit.id})" 
-                        ${isFullyCompleted ? 'disabled' : ''}
-                        aria-label="Complete ${escapeHtml(habit.name)}">
-                    ${habit.completedToday > 0 ? '✓' : ''}
-                </button>
-                <div class="habit-info">
-                    <span class="habit-name">${escapeHtml(habit.name)}</span>
-                    ${progress ? `<span class="habit-progress">${progress}</span>` : ''}
-                </div>
-                ${habit.completedToday > 0 ? `<button class="habit-undo" onclick="undoHabitCompletion(${habit.id})" aria-label="Undo">↩</button>` : ''}
-                <button class="habit-delete" onclick="deleteHabit(${habit.id})" aria-label="Delete ${escapeHtml(habit.name)}">×</button>
-            </div>
-        `;
-    }).join('');
 }
 
 // Clear all marbles from the jar

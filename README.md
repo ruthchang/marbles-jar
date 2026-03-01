@@ -1,4 +1,4 @@
-# Habit Jar - Marble Count 🫙
+# Marble Jar - Marble Count 🫙
 
 A delightful habit tracking app where you collect cute marbles (and other collectibles) as rewards for completing your daily habits.
 

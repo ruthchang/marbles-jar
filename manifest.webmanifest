@@ -1,6 +1,6 @@
 {
-  "name": "Habit Jar",
-  "short_name": "Habit Jar",
+  "name": "Marble Jar",
+  "short_name": "Marble Jar",
   "description": "Fill your jar, one habit at a time.",
   "start_url": "/index.html",
   "scope": "/",
