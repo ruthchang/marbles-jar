@@ -13,19 +13,41 @@ function loadState() {
     return { marbles: [], totalMarbles: 0 };
 }
 
+function getMarbleVariantIndex(category, marble) {
+    if (!category || !category.isMarble || !marble) return -1;
+    const name = marble.itemName || '';
+    if (name && Array.isArray(category.itemNames)) {
+        const idxByName = category.itemNames.indexOf(name);
+        if (idxByName >= 0) return idxByName;
+    }
+    const color = String(marble.fallbackColor || marble.marbleColor || '').toLowerCase();
+    if (color && Array.isArray(category.fallbackColors)) {
+        const idxByColor = category.fallbackColors.findIndex(c => String(c || '').toLowerCase() === color);
+        if (idxByColor >= 0) return idxByColor;
+    }
+    return -1;
+}
+
 // Count collected items by image URL or type
 function countCollected(state) {
-    const collected = {};
+    const collected = (state.collectionHistory && typeof state.collectionHistory === 'object')
+        ? { ...state.collectionHistory }
+        : {};
     
-    state.marbles.forEach(marble => {
+    (state.marbles || []).forEach(marble => {
         // For marble type collectibles, count by type name
         const config = collectibles[marble.type];
         if (config && config.isMarble) {
-            collected[marble.type] = (collected[marble.type] || 0) + 1;
+            if (collected[marble.type] == null) collected[marble.type] = 1;
+            const variantIndex = getMarbleVariantIndex(config, marble);
+            if (variantIndex >= 0) {
+                const variantKey = `${marble.type}::${variantIndex}`;
+                if (collected[variantKey] == null) collected[variantKey] = 1;
+            }
         } else {
             // For icon-based collectibles, count by image URL
             const key = marble.imageUrl || marble.type;
-            collected[key] = (collected[key] || 0) + 1;
+            if (collected[key] == null) collected[key] = 1;
         }
     });
     
@@ -89,6 +111,7 @@ function setupCollectibleDetailModal() {
         const wrapper = e.target.closest('.collectible-item-wrapper');
         const item = wrapper?.querySelector('.collectible-item') || e.target.closest('.collectible-item');
         if (!item) return;
+        if (item.dataset.collected !== 'true') return;
         
         const categoryKey = item.dataset.category;
         const index = parseInt(item.dataset.index, 10);
@@ -117,8 +140,9 @@ function renderCollection(collected) {
         
         let categoryCollected = 0;
         if (isMarbleType) {
-            // For marbles, total count (capped at item count for display)
-            categoryCollected = Math.min(collected[categoryKey] || 0, itemCount);
+            categoryCollected = category.fallbackColors.reduce((sum, _color, index) => {
+                return sum + ((collected[`${categoryKey}::${index}`] || 0) > 0 ? 1 : 0);
+            }, 0);
         } else {
             categoryCollected = category.images.filter(img => collected[img]).length;
         }
@@ -139,7 +163,7 @@ function renderCollection(collected) {
                         <h2 class="category-title">${categoryLabel}</h2>
                     </div>
                     <span class="category-count ${isComplete ? 'complete' : ''}">
-                        ${isMarbleType ? (collected[categoryKey] || 0) : categoryCollected}/${itemCount}
+                        ${categoryCollected}/${itemCount}
                     </span>
                 </div>
                 <div class="items-grid">
@@ -153,14 +177,15 @@ function renderCollection(collected) {
                                 <div class="collectible-item ${isCollected ? 'collected' : 'locked'}" 
                                      data-name="${escapeHtml(itemName)}"
                                      data-category="${escapeHtml(categoryKey)}"
-                                     data-index="${index}">
+                                     data-index="${index}"
+                                     data-collected="${isCollected}">
                                     <div class="collectible-item-visual">
                                         <img src="${imageUrl}" alt="${escapeHtml(itemName)}" 
                                              onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                                         <div class="fallback-circle" style="display: none; background: ${category.fallbackColors[index]};"></div>
                                     </div>
                                     <div class="collectible-item-footer">
-                                        <span class="collectible-item-name${itemName.length > 8 ? ' long-name' : ''}">${escapeHtml(itemName)}</span>
+                                        <span class="collectible-item-name${itemName.length > 8 ? ' long-name' : ''}">${isCollected ? escapeHtml(itemName) : ''}</span>
                                     </div>
                                 </div>
                                 <div class="collectible-item-badges">
@@ -182,13 +207,10 @@ function renderCollection(collected) {
 
 // Render marble items with gradient previews
 function renderMarbleItems(category, collected, categoryKey) {
-    const totalMarbleCount = collected[categoryKey] || 0;
-    
     return category.fallbackColors.map((color, index) => {
         const itemName = category.itemNames?.[index] || `Marble ${index + 1}`;
-        const isCollected = totalMarbleCount > index;
-        const isLastCollectedSlot = isCollected && index === Math.min(totalMarbleCount, category.fallbackColors.length) - 1;
-        const showMarbleCount = totalMarbleCount > 0 && isLastCollectedSlot;
+        const variantCount = collected[`${categoryKey}::${index}`] || 0;
+        const isCollected = variantCount > 0;
         
         return `
             <div class="collectible-item-wrapper">
@@ -197,18 +219,19 @@ function renderMarbleItems(category, collected, categoryKey) {
                      data-category="${escapeHtml(categoryKey)}"
                      data-index="${index}"
                      data-is-marble="true"
-                     data-color="${escapeHtml(color)}">
+                     data-color="${escapeHtml(color)}"
+                     data-collected="${isCollected}">
                     <div class="collectible-item-visual">
                         <div class="marble-preview" style="background: radial-gradient(circle at 30% 30%, ${lightenColor(color, 40)} 0%, ${color} 50%, ${darkenColor(color, 30)} 100%);"></div>
                         <div class="marble-shine"></div>
                     </div>
                     <div class="collectible-item-footer">
-                        <span class="collectible-item-name${itemName.length > 8 ? ' long-name' : ''}">${escapeHtml(itemName)}</span>
+                        <span class="collectible-item-name${itemName.length > 8 ? ' long-name' : ''}">${isCollected ? escapeHtml(itemName) : ''}</span>
                     </div>
                 </div>
                 <div class="collectible-item-badges">
                     ${isCollected ? '<span class="collected-badge">✓</span>' : ''}
-                    ${showMarbleCount && totalMarbleCount > 1 ? `<span class="collected-count">×${totalMarbleCount}</span>` : ''}
+                    ${variantCount > 1 ? `<span class="collected-count">×${variantCount}</span>` : ''}
                 </div>
             </div>
         `;
@@ -226,7 +249,10 @@ function updateStats(collected) {
             totalAvailable += category.fallbackColors.length;
             const marbleCount = collected[key] || 0;
             totalCollected += marbleCount;
-            uniqueCollected += Math.min(marbleCount, category.fallbackColors.length);
+            const uniqueMarbleVariants = category.fallbackColors.reduce((sum, _color, index) => {
+                return sum + ((collected[`${key}::${index}`] || 0) > 0 ? 1 : 0);
+            }, 0);
+            uniqueCollected += uniqueMarbleVariants;
         } else {
             totalAvailable += category.images.length;
             category.images.forEach(img => {

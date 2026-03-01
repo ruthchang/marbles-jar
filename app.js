@@ -4,6 +4,7 @@ const { Engine, Render, Runner, Bodies, Body, Composite, Events, Query } = Matte
 // App State
 let state = {
     marbles: [],
+    collectionHistory: {},
     collectibleType: 'marble',
     enabledCollectibles: [], // Populated on init; which types can appear when randomly adding
     totalMarbles: 0,
@@ -126,6 +127,9 @@ let jarWalls = [];
 let marbleBodies = [];
 let restoreTimer = null;
 let restoreMarbleTimers = [];
+let viewportResizeTimer = null;
+let pendingRestoreSignature = '';
+let lastRestoredSignature = '';
 
 const SETTLE_LINEAR_SPEED = 0.05;
 const SETTLE_ANGULAR_SPEED = 0.015;
@@ -292,6 +296,15 @@ async function init() {
 
     // Delay collectible restoration briefly after physics init.
     scheduleRestoreMarbles(500);
+
+    window.addEventListener('resize', () => {
+        if (viewportResizeTimer) clearTimeout(viewportResizeTimer);
+        viewportResizeTimer = setTimeout(() => {
+            if (!engine || marbleBodies.length === 0) return;
+            resizeExistingMarbles();
+            checkMarbleBounds();
+        }, 120);
+    });
 }
 
 // Apply jar type CSS class
@@ -305,16 +318,36 @@ function applyJarType() {
     container.classList.add(jar.cssClass);
 }
 
-// Get marble size based on jar capacity
+// Get collectible size from jar geometry, tuned so ~100 pieces fill near the top.
 function getMarbleSize() {
-    const baseSize = 28;
-    const capacity = state.jarCapacity;
-    
-    if (capacity <= 20) return baseSize * 1.4;
-    if (capacity <= 50) return baseSize * 1.0;
-    if (capacity <= 100) return baseSize * 0.75;
-    if (capacity <= 200) return baseSize * 0.55;
-    return baseSize * 0.4;
+    const targetFillCount = 100;
+    const container = document.getElementById('jarContainer');
+    if (!container) return 20;
+
+    const width = container.offsetWidth || 280;
+    const height = container.offsetHeight || 350;
+    const bounds = getJarBoundaries(width, height);
+
+    const interiorWidth = Math.max(20, bounds.right - bounds.left - 8);
+    const interiorHeight = Math.max(20, bounds.bottom - bounds.top - 8);
+    let usableArea = interiorWidth * interiorHeight;
+
+    // Rough occupancy by jar shape inside its own bounding rectangle.
+    const shapeAreaFactor = {
+        classic: 0.84,
+        tall: 0.8,
+        wide: 0.86,
+        round: 0.72,
+        heart: 0.68
+    };
+    usableArea *= shapeAreaFactor[bounds.shape] || 0.82;
+
+    // Approximate settled packing fill factor.
+    const packingFill = 0.76;
+    const areaPerItem = (usableArea * packingFill) / Math.max(1, targetFillCount);
+    const diameter = Math.sqrt((4 * areaPerItem) / Math.PI);
+
+    return Math.max(10, Math.min(44, diameter));
 }
 
 // Resize existing marbles
@@ -407,10 +440,26 @@ function applyStateData(parsed) {
     state.enabledCollectibles = Array.isArray(parsed.enabledCollectibles)
         ? [...new Set(parsed.enabledCollectibles.map(normalizeType))].filter(k => collectibles[k])
         : allTypes;
+    state.collectionHistory = {};
+    if (parsed.collectionHistory && typeof parsed.collectionHistory === 'object') {
+        Object.entries(parsed.collectionHistory).forEach(([rawKey, count]) => {
+            if (typeof count !== 'number' || count <= 0) return;
+            const [rawType, rawIndex] = rawKey.split('::');
+            const normalizedType = normalizeType(rawType);
+            const key = rawIndex == null ? normalizedType : `${normalizedType}::${rawIndex}`;
+            state.collectionHistory[key] = (state.collectionHistory[key] || 0) + count;
+        });
+    }
     state.totalMarbles = state.marbles.length;
     state.jarType = jarTypes[parsed.jarType] ? parsed.jarType : 'classic';
     state.jarCapacity = Math.min(200, Math.max(10, parsed.jarCapacity ?? 50));
     state.soundTheme = parsed.soundTheme || 'default';
+
+    // Backfill history from current marbles for older saves and keep it inclusive.
+    const inferredHistory = buildCollectionHistoryFromMarbles(state.marbles);
+    Object.entries(inferredHistory).forEach(([key, count]) => {
+        state.collectionHistory[key] = Math.max(state.collectionHistory[key] || 0, count);
+    });
 }
 
 // Load state from localStorage
@@ -438,6 +487,70 @@ function saveState() {
             if (session) Sync.pushState(state);
         });
     }
+}
+
+function getMarbleVariantIndexByData(type, itemName, fallbackColor, imageUrl) {
+    const config = collectibles[type];
+    if (!config || !config.isMarble) return -1;
+    if (itemName && Array.isArray(config.itemNames)) {
+        const byName = config.itemNames.indexOf(itemName);
+        if (byName >= 0) return byName;
+    }
+    const normalizedColor = String(fallbackColor || '').toLowerCase();
+    if (normalizedColor && Array.isArray(config.fallbackColors)) {
+        const byColor = config.fallbackColors.findIndex(c => String(c || '').toLowerCase() === normalizedColor);
+        if (byColor >= 0) return byColor;
+    }
+    const byImage = Array.isArray(config.images) ? config.images.indexOf(imageUrl || '') : -1;
+    if (byImage >= 0) return byImage;
+    return 0;
+}
+
+function buildCollectionHistoryFromMarbles(marbles) {
+    const history = {};
+    (marbles || []).forEach((marble) => {
+        const config = collectibles[marble.type];
+        if (!config) return;
+        if (config.isMarble) {
+            history[marble.type] = (history[marble.type] || 0) + 1;
+            const variantIndex = getMarbleVariantIndexByData(
+                marble.type,
+                marble.itemName,
+                marble.fallbackColor,
+                marble.imageUrl
+            );
+            if (variantIndex >= 0) {
+                const variantKey = `${marble.type}::${variantIndex}`;
+                history[variantKey] = (history[variantKey] || 0) + 1;
+            }
+            return;
+        }
+
+        const key = marble.imageUrl || marble.type;
+        history[key] = (history[key] || 0) + 1;
+    });
+    return history;
+}
+
+function recordCollectedHistory(type, itemName, fallbackColor, imageUrl) {
+    const config = collectibles[type];
+    if (!config) return;
+    if (!state.collectionHistory || typeof state.collectionHistory !== 'object') {
+        state.collectionHistory = {};
+    }
+
+    if (config.isMarble) {
+        state.collectionHistory[type] = (state.collectionHistory[type] || 0) + 1;
+        const variantIndex = getMarbleVariantIndexByData(type, itemName, fallbackColor, imageUrl);
+        if (variantIndex >= 0) {
+            const variantKey = `${type}::${variantIndex}`;
+            state.collectionHistory[variantKey] = (state.collectionHistory[variantKey] || 0) + 1;
+        }
+        return;
+    }
+
+    const key = imageUrl || type;
+    state.collectionHistory[key] = (state.collectionHistory[key] || 0) + 1;
 }
 
 // Render collectible options
@@ -480,6 +593,11 @@ function renderCollectibles() {
         span.addEventListener('click', (e) => {
             e.preventDefault();
             const option = span.closest('.collectible-option');
+            const checkbox = option.querySelector('.collectible-option-checkbox');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            }
             picker.querySelectorAll('.collectible-option').forEach(o => o.classList.remove('active'));
             option.classList.add('active');
             state.collectibleType = option.dataset.type;
@@ -1364,11 +1482,11 @@ function setupMarbleZoom(canvas) {
             : `A wonderful ${name} to add to your growing collection!`;
 
         let preview = '';
-        if (marble.marbleImage && isSafeImageUrl(marble.marbleImage)) {
-            preview = `<img class="marble-zoom-image" src="${marble.marbleImage.replace(/"/g, '&quot;')}" alt="${escapeHtml(name)}">`;
-        } else if (isMarbleType) {
+        if (isMarbleType) {
             const gradient = `radial-gradient(circle at 30% 30%, ${lightenColor(marble.marbleColor || '#1AA39D', 40)} 0%, ${marble.marbleColor || '#1AA39D'} 50%, ${darkenColor(marble.marbleColor || '#1AA39D', 30)} 100%)`;
             preview = `<div class="marble-zoom-gradient" style="background: ${gradient};"></div>`;
+        } else if (marble.marbleImage && isSafeImageUrl(marble.marbleImage)) {
+            preview = `<img class="marble-zoom-image" src="${marble.marbleImage.replace(/"/g, '&quot;')}" alt="${escapeHtml(name)}">`;
         } else {
             preview = `<div class="marble-zoom-gradient" style="background: ${marble.marbleColor || '#1AA39D'};"></div>`;
         }
@@ -1429,7 +1547,8 @@ function getRandomEnabledType() {
 }
 
 // Add a collectible to the jar
-function addMarble(type) {
+function addMarble(type, options = {}) {
+    const { playSound = true } = options;
     if (type == null) type = getRandomEnabledType();
     const container = document.getElementById('jarContainer');
     const width = container.offsetWidth;
@@ -1498,12 +1617,13 @@ function addMarble(type) {
     
     // Save marble data
     state.marbles.push({ type, imageUrl, fallbackColor, radius, itemName });
+    recordCollectedHistory(type, itemName, fallbackColor, imageUrl);
     state.totalMarbles++;
     saveState();
     updateMarbleCount();
     
     // Play add sound
-    playAddSound();
+    if (playSound) playAddSound();
     
     return marble;
 }
@@ -1646,10 +1766,47 @@ function restoreMarbles() {
     });
 }
 
+function getRestoreSignature() {
+    const marbles = state.marbles || [];
+    const sample = marbles.slice(0, 12).map((m) => [
+        m.type || '',
+        m.itemName || '',
+        m.imageUrl || '',
+        m.fallbackColor || '',
+        Number(m.radius || 0).toFixed(2)
+    ]);
+    return JSON.stringify({
+        jarType: state.jarType,
+        jarCapacity: state.jarCapacity,
+        count: marbles.length,
+        sample
+    });
+}
+
 function scheduleRestoreMarbles(delay = 0) {
+    const signature = getRestoreSignature();
+
+    // Skip replaying the same restore on top of already-restored bodies.
+    if (marbleBodies.length > 0 && signature === lastRestoredSignature) {
+        return;
+    }
+
+    if (restoreTimer && signature === pendingRestoreSignature) {
+        return;
+    }
+
     if (restoreTimer) clearTimeout(restoreTimer);
+    pendingRestoreSignature = signature;
     restoreTimer = setTimeout(() => {
         restoreTimer = null;
+        pendingRestoreSignature = '';
+
+        // If another path already restored this same state, do nothing.
+        if (marbleBodies.length > 0 && signature === lastRestoredSignature) {
+            return;
+        }
+
+        lastRestoredSignature = signature;
         restoreMarbles();
     }, delay);
 }
@@ -1681,6 +1838,60 @@ function playAddSound() {
 // Update marble count display
 function updateMarbleCount() {
     document.getElementById('marbleCount').textContent = state.totalMarbles;
+    const labelEl = document.getElementById('marbleCountLabel');
+    if (labelEl) {
+        labelEl.textContent = state.totalMarbles === 1 ? 'marble collected' : 'marbles collected';
+    }
+    const undoBtn = document.getElementById('undoMarbleBtn');
+    if (undoBtn) undoBtn.disabled = state.totalMarbles === 0;
+    const shakeHint = document.getElementById('shakeHint');
+    if (shakeHint) {
+        shakeHint.classList.toggle('hidden-empty', state.totalMarbles === 0);
+    }
+    const countInput = document.getElementById('settingsMarbleCountInput');
+    if (countInput) countInput.value = String(state.totalMarbles);
+}
+
+function setMarbleCount(targetCount) {
+    if (!Number.isFinite(targetCount)) return;
+    const clampedTarget = Math.max(0, Math.min(5000, Math.floor(targetCount)));
+    const current = state.totalMarbles;
+    if (clampedTarget === current) return;
+
+    if (clampedTarget > current) {
+        const toAdd = clampedTarget - current;
+        for (let i = 0; i < toAdd; i++) {
+            addMarble(undefined, { playSound: false });
+        }
+        return;
+    }
+
+    const toRemove = current - clampedTarget;
+    for (let i = 0; i < toRemove; i++) {
+        const body = marbleBodies.pop();
+        if (body && engine) Composite.remove(engine.world, body);
+        state.marbles.pop();
+    }
+    state.totalMarbles = state.marbles.length;
+    saveState();
+    updateMarbleCount();
+}
+
+function clearCollectionHistory() {
+    state.collectionHistory = {};
+    saveState();
+}
+
+function undoLastMarble() {
+    if (state.totalMarbles <= 0) return;
+    const body = marbleBodies.pop();
+    if (body && engine) {
+        Composite.remove(engine.world, body);
+    }
+    state.marbles.pop();
+    state.totalMarbles = state.marbles.length;
+    saveState();
+    updateMarbleCount();
 }
 
 // Setup event listeners
@@ -1689,7 +1900,7 @@ function setupEventListeners() {
     document.getElementById('settingsBtn')?.addEventListener('click', openSettings);
     document.getElementById('settingsBackBtn')?.addEventListener('click', closeSettings);
     document.getElementById('settingsResetBtn')?.addEventListener('click', () => {
-        if (confirm('Empty your jar? This will remove all collected items.')) {
+        if (confirm('Empty your jar? This clears current jar contents but keeps your collection history.')) {
             clearAllMarbles();
         }
     });
@@ -1699,12 +1910,55 @@ function setupEventListeners() {
     document.getElementById('deselectAllCollectiblesBtn')?.addEventListener('click', () => {
         setAllCollectiblesEnabled(false);
     });
+    document.getElementById('settingsClearCollectiblesBtn')?.addEventListener('click', () => {
+        if (confirm('Clear all collected-item history? This will reset what appears unlocked in Collection.')) {
+            clearCollectionHistory();
+        }
+    });
+    const applyCountBtn = document.getElementById('settingsApplyCountBtn');
+    const countInput = document.getElementById('settingsMarbleCountInput');
+    applyCountBtn?.addEventListener('click', () => {
+        const value = Number(countInput?.value);
+        setMarbleCount(value);
+    });
+    countInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const value = Number(countInput.value);
+            setMarbleCount(value);
+        }
+    });
+    document.getElementById('undoMarbleBtn')?.addEventListener('click', undoLastMarble);
+
+    const syncBadge = document.getElementById('syncBadge');
+    syncBadge?.setAttribute('role', 'button');
+    syncBadge?.setAttribute('tabindex', '0');
+    const openSyncSettings = () => {
+        openSettings();
+        const syncGroup = document.getElementById('syncGroup');
+        if (syncGroup) {
+            syncGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        const emailInput = document.getElementById('syncEmail');
+        if (emailInput && emailInput.offsetParent !== null) {
+            setTimeout(() => emailInput.focus(), 180);
+        }
+    };
+    syncBadge?.addEventListener('click', openSyncSettings);
+    syncBadge?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openSyncSettings();
+        }
+    });
 }
 
 // Open settings page
 function openSettings() {
     document.getElementById('settingsPage').classList.add('active');
     document.body.style.overflow = 'hidden';
+    const countInput = document.getElementById('settingsMarbleCountInput');
+    if (countInput) countInput.value = String(state.totalMarbles);
 }
 
 // Close settings page

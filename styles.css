@@ -106,6 +106,18 @@ header h1 {
     background: rgba(255, 255, 255, 0.8);
     color: #555;
     border: 1px solid rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.sync-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.sync-badge:active {
+    transform: translateY(0);
+    opacity: 0.92;
 }
 
 .sync-badge.sync-in {
@@ -139,6 +151,12 @@ header h1 {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.settings-btn-icon {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
 }
 
 .settings-btn:hover {
@@ -289,19 +307,25 @@ header h1 {
     bottom: -25px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(255, 255, 255, 0.9);
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    box-shadow: var(--shadow);
-    opacity: 1;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: 0.78rem;
+    color: rgba(45, 52, 54, 0.55);
+    letter-spacing: 0.01em;
+    box-shadow: none;
+    opacity: 0.8;
     transition: opacity 0.3s ease;
     z-index: 10;
     white-space: nowrap;
 }
 
 .shake-hint.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.shake-hint.hidden-empty {
     opacity: 0;
     pointer-events: none;
 }
@@ -316,6 +340,44 @@ header h1 {
 .jar-stats span {
     color: var(--accent);
     font-size: 1.5rem;
+}
+
+.undo-marble-btn {
+    margin-left: 8px;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(0, 0, 0, 0.16);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.75);
+    color: #53605f;
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+}
+
+.undo-marble-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.92);
+}
+
+.undo-marble-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.undo-btn-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+}
+
+.jar-section .subtitle {
+    margin-top: 10px;
+}
+
+.jar-section .header-actions {
+    margin-top: 10px;
 }
 
 .reset-jar-btn {
@@ -672,9 +734,9 @@ header h1 {
 }
 
 .collectible-option.active {
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
-    color: white;
-    border-color: var(--accent-hover);
+    background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+    color: inherit;
+    border-color: var(--accent);
 }
 
 /* Modal */
@@ -903,13 +965,17 @@ header h1 {
 .marble-zoom-content .marble-zoom-gradient {
     width: 140px;
     height: 140px;
-    border-radius: 0;
+    border-radius: 50%;
     position: relative;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
 .marble-zoom-content .marble-zoom-gradient::after {
-    content: none;
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.6) 0%, transparent 50%);
 }
 
 .marble-zoom-image {
@@ -1188,7 +1254,7 @@ header h1 {
     padding: 16px 20px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
     z-index: 10;
 }
@@ -1252,58 +1318,86 @@ header h1 {
 }
 
 /* Sync section */
+#syncGroup {
+    padding: 18px;
+    border: 1px solid rgba(26, 163, 157, 0.2);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(243, 251, 250, 0.95) 100%);
+}
+
+#syncGroup h3 {
+    margin-bottom: 14px;
+}
+
+#syncStatus {
+    margin-bottom: 6px;
+    min-height: 0;
+}
+
 .sync-auth-form {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 10px;
+    gap: 14px;
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .sync-auth-form input {
+    width: 100%;
     padding: 12px 14px;
-    border: 2px solid #e8e8e8;
-    border-radius: 10px;
+    border: 2px solid #dce7e6;
+    border-radius: 12px;
     font-family: inherit;
-    font-size: 1rem;
+    font-size: 0.96rem;
+    background: #fff;
 }
 
 .sync-auth-form input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(26, 163, 157, 0.12);
 }
 
 .sync-auth-buttons {
-    display: flex;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 4px;
 }
 
 .sync-btn {
     flex: 1;
-    padding: 12px;
+    padding: 12px 14px;
     background: var(--accent);
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     color: white;
     font-family: inherit;
-    font-size: 0.95rem;
-    font-weight: 600;
+    font-size: 0.92rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, transform 0.2s;
 }
 
 .sync-btn:hover {
     opacity: 0.9;
+    transform: translateY(-1px);
 }
 
 .sync-btn-secondary {
-    background: #e8e8e8;
-    color: #333;
+    background: #e9efef;
+    color: #34504e;
 }
 
 .sync-hint {
-    font-size: 0.85rem;
-    color: #888;
-    margin: 10px 0 0;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: #6f7f7d;
+    margin: 14px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .sync-signed-in {
@@ -1312,25 +1406,36 @@ header h1 {
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.78);
+    border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .sync-signed-in span {
-    font-size: 0.9rem;
-    color: #666;
+    font-size: 0.88rem;
+    color: #4e6060;
 }
 
 .sync-sign-out-btn {
-    padding: 8px 16px;
-    background: #f0f0f0;
+    padding: 8px 14px;
+    background: #e7efee;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-family: inherit;
-    font-size: 0.9rem;
+    font-size: 0.86rem;
+    font-weight: 600;
     cursor: pointer;
 }
 
 .sync-sign-out-btn:hover {
-    background: #e0e0e0;
+    background: #d7e5e3;
+}
+
+@media (max-width: 420px) {
+    .sync-auth-buttons {
+        grid-template-columns: 1fr;
+    }
 }
 
 .danger-btn {
@@ -1350,6 +1455,74 @@ header h1 {
 .danger-btn:hover {
     background: #ff6b6b;
     color: white;
+}
+
+.btn-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    vertical-align: -2px;
+    margin-right: 6px;
+}
+
+.danger-btn.subtle {
+    margin-bottom: 10px;
+    border-color: #8aa2a0;
+    color: #4f6664;
+}
+
+.danger-btn.subtle:hover {
+    background: #8aa2a0;
+    color: #fff;
+}
+
+.settings-inline-row {
+    margin-bottom: 12px;
+}
+
+.settings-inline-label {
+    display: block;
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.settings-inline-controls {
+    display: flex;
+    gap: 8px;
+}
+
+#settingsMarbleCountInput {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 2px solid #e8e8e8;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+#settingsMarbleCountInput:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.settings-inline-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 10px 14px;
+    background: var(--accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.settings-inline-btn:hover {
+    opacity: 0.92;
 }
 
 /* Jar Shape Variations */

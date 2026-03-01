@@ -17,11 +17,6 @@
         <header>
             <h1>Marble Jar</h1>
             <p class="subtitle">Tap the lid to add a marble</p>
-            <div class="header-actions">
-                <a href="collection.html" class="collection-link">View Collection</a>
-                <button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
-            </div>
-            <div class="sync-badge sync-unknown" id="syncBadge">Sync: Checking...</div>
         </header>
 
         <main>
@@ -38,8 +33,14 @@
                     </div>
                 </div>
                 <div class="jar-stats">
-                    <span id="marbleCount">0</span> marbles collected
+                    <span id="marbleCount">0</span> <span id="marbleCountLabel">marbles collected</span>
+                    <button type="button" class="undo-marble-btn" id="undoMarbleBtn" title="Undo last marble" aria-label="Undo last marble"><img class="undo-btn-icon" src="https://cdn-icons-png.flaticon.com/128/225/225453.png" alt=""></button>
                 </div>
+                <div class="header-actions">
+                    <a href="collection.html" class="collection-link">View Collection</a>
+                    <button class="settings-btn" id="settingsBtn" title="Settings"><img class="settings-btn-icon" src="https://cdn-icons-png.flaticon.com/128/1790/1790071.png" alt=""></button>
+                </div>
+                <div class="sync-badge sync-unknown" id="syncBadge">Sync: Checking...</div>
             </div>
         </main>
 
@@ -86,7 +87,15 @@
 
                 <div class="settings-group">
                     <h3>Data</h3>
-                    <button class="danger-btn" id="settingsResetBtn">🗑️ Empty Jar</button>
+                    <div class="settings-inline-row">
+                        <label for="settingsMarbleCountInput" class="settings-inline-label">Set marbles in jar</label>
+                        <div class="settings-inline-controls">
+                            <input type="number" id="settingsMarbleCountInput" min="0" max="5000" step="1" value="0">
+                            <button type="button" class="settings-inline-btn" id="settingsApplyCountBtn">Apply</button>
+                        </div>
+                    </div>
+                    <button class="danger-btn subtle" id="settingsClearCollectiblesBtn"><img class="btn-icon" src="https://cdn-icons-png.flaticon.com/128/1669/1669005.png" alt=""> Clear Items Collected So Far</button>
+                    <button class="danger-btn" id="settingsResetBtn"><img class="btn-icon" src="https://cdn-icons-png.flaticon.com/128/1890/1890119.png" alt=""> Empty Jar</button>
                 </div>
             </div>
         </div>
