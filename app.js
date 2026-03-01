@@ -800,7 +800,7 @@ function setupPhysics() {
     // Setup shake/drag interaction
     setupShakeInteraction();
 
-    // Double-click to zoom on marble
+    // Click/tap collectible for detail modal
     setupMarbleZoom(canvas);
 }
 
@@ -1294,13 +1294,14 @@ function setupShakeInteraction() {
     container.addEventListener('click', requestSensorPermission);
 }
 
-// Double-click marble to zoom in for a closer look
+// Click/tap collectible in jar to view details
 function setupMarbleZoom(canvas) {
     const overlay = document.getElementById('marbleZoomOverlay');
     const content = document.getElementById('marbleZoomContent');
     const closeBtn = document.getElementById('marbleZoomClose');
 
     const container = document.getElementById('jarContainer');
+    if (!overlay || !content || !closeBtn || !container || !canvas) return;
 
     function worldPointFromEvent(e) {
         const rect = canvas.getBoundingClientRect();
@@ -1315,26 +1316,48 @@ function setupMarbleZoom(canvas) {
             clientX = e.clientX;
             clientY = e.clientY;
         }
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+        // Matter world units track CSS pixels here; avoid DPR scaling mismatch.
+        return { x: (clientX - rect.left), y: (clientY - rect.top) };
+    }
+
+    function resolveItemIndex(marble, config) {
+        if (!config) return 0;
+        if (config.isMarble) {
+            const byName = config.itemNames?.indexOf(marble.itemName || '');
+            if (typeof byName === 'number' && byName >= 0) return byName;
+            const byColor = config.fallbackColors?.findIndex(c =>
+                String(c || '').toLowerCase() === String(marble.marbleColor || '').toLowerCase()
+            );
+            if (typeof byColor === 'number' && byColor >= 0) return byColor;
+            return 0;
+        }
+
+        const byImage = config.images?.indexOf(marble.marbleImage || '');
+        if (typeof byImage === 'number' && byImage >= 0) return byImage;
+        const byName = config.itemNames?.indexOf(marble.itemName || '');
+        if (typeof byName === 'number' && byName >= 0) return byName;
+        return 0;
     }
 
     function showMarbleZoom(marble) {
         const config = collectibles[marble.marbleType];
         const isMarbleType = config && config.isMarble;
         const name = marble.itemName || config?.name?.split(/\s+/).slice(1).join(' ') || marble.marbleType;
+        const index = resolveItemIndex(marble, config);
+        const description = typeof getItemDescription === 'function'
+            ? getItemDescription(marble.marbleType, index, name)
+            : `A wonderful ${name} to add to your growing collection!`;
 
         let preview = '';
-        if (isMarbleType) {
+        if (marble.marbleImage && isSafeImageUrl(marble.marbleImage)) {
+            preview = `<img class="marble-zoom-image" src="${marble.marbleImage.replace(/"/g, '&quot;')}" alt="${escapeHtml(name)}">`;
+        } else if (isMarbleType) {
             const gradient = `radial-gradient(circle at 30% 30%, ${lightenColor(marble.marbleColor || '#1AA39D', 40)} 0%, ${marble.marbleColor || '#1AA39D'} 50%, ${darkenColor(marble.marbleColor || '#1AA39D', 30)} 100%)`;
             preview = `<div class="marble-zoom-gradient" style="background: ${gradient};"></div>`;
-        } else if (marble.marbleImage && isSafeImageUrl(marble.marbleImage)) {
-            preview = `<div class="marble-zoom-preview" style="background-image: url('${marble.marbleImage.replace(/'/g, "\\'")}');"></div>`;
         } else {
             preview = `<div class="marble-zoom-gradient" style="background: ${marble.marbleColor || '#1AA39D'};"></div>`;
         }
-        content.innerHTML = `${preview}<span class="marble-zoom-name">${escapeHtml(name)}</span>`;
+        content.innerHTML = `${preview}<span class="marble-zoom-name">${escapeHtml(name)}</span><p class="marble-zoom-description">${escapeHtml(description)}</p>`;
 
         overlay.classList.add('active');
         overlay.setAttribute('aria-hidden', 'false');
@@ -1353,53 +1376,34 @@ function setupMarbleZoom(canvas) {
         }
     }
 
-    // Manual double-click: use mousedown (click can be suppressed by touch-action)
-    let lastDownTime = 0;
-    let lastDownPoint = null;
-    const dblClickDelay = 500;
-    const dblClickDistance = 35;
+    // Click to open details (dragging/swiping won't trigger click)
+    canvas.addEventListener('click', tryShowMarbleZoom);
+    container.addEventListener('click', tryShowMarbleZoom);
 
-    function handleMouseDown(e) {
-        const point = worldPointFromEvent(e);
-        const now = Date.now();
-        const isSecondClick = lastDownPoint && (now - lastDownTime) < dblClickDelay &&
-            Math.abs(point.x - lastDownPoint.x) < dblClickDistance &&
-            Math.abs(point.y - lastDownPoint.y) < dblClickDistance;
-        if (isSecondClick) {
-            lastDownTime = 0;
-            lastDownPoint = null;
+    // Touch fallback for browsers where click can be suppressed by touch interactions
+    let touchStartPoint = null;
+    let touchStartTime = 0;
+    canvas.addEventListener('touchstart', (e) => {
+        if (!e.touches || e.touches.length === 0) return;
+        touchStartPoint = worldPointFromEvent(e);
+        touchStartTime = Date.now();
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', (e) => {
+        if (!touchStartPoint) return;
+        const endPoint = worldPointFromEvent(e);
+        const dt = Date.now() - touchStartTime;
+        const moved = Math.hypot(endPoint.x - touchStartPoint.x, endPoint.y - touchStartPoint.y);
+        touchStartPoint = null;
+        touchStartTime = 0;
+        if (dt < 300 && moved < 18) {
             tryShowMarbleZoom(e);
-        } else {
-            lastDownTime = now;
-            lastDownPoint = point;
         }
-    }
-
-    container.addEventListener('mousedown', handleMouseDown);
+    }, { passive: true });
 
     closeBtn.addEventListener('click', hideMarbleZoom);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) hideMarbleZoom(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideMarbleZoom(); });
-
-    // Touch: double-tap
-    let lastTap = 0;
-    let lastTapPoint = null;
-    canvas.addEventListener('touchend', (e) => {
-        const now = Date.now();
-        const point = worldPointFromEvent(e);
-        const isSecondTap = lastTapPoint && (now - lastTap) < 350 &&
-            Math.abs(point.x - lastTapPoint.x) < 25 &&
-            Math.abs(point.y - lastTapPoint.y) < 25;
-        if (isSecondTap) {
-            e.preventDefault();
-            tryShowMarbleZoom(e);
-            lastTap = 0;
-            lastTapPoint = null;
-        } else {
-            lastTap = now;
-            lastTapPoint = point;
-        }
-    });
 }
 
 // Pick a random type from enabled collectibles

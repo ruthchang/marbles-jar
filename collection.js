@@ -42,7 +42,7 @@ function init() {
     setupCollectibleDetailModal();
 }
 
-// Setup double-click to open collectible detail popup
+// Setup single-click to open collectible detail popup
 function setupCollectibleDetailModal() {
     const overlay = document.getElementById('collectibleDetailOverlay');
     const content = document.getElementById('collectibleDetailContent');
@@ -70,7 +70,7 @@ function setupCollectibleDetailModal() {
             previewHtml = `<div class="collectible-detail-preview marble" style="background: ${gradient};"></div>`;
         } else if (category.images && category.images[index]) {
             const imageUrl = category.images[index];
-            previewHtml = `<img class="collectible-detail-preview" src="${imageUrl}" alt="${escapeHtml(itemName)}">`;
+            previewHtml = `<img class="collectible-detail-image" src="${imageUrl}" alt="${escapeHtml(itemName)}">`;
         } else {
             previewHtml = `<div class="collectible-detail-preview marble" style="background: ${color || '#999'};"></div>`;
         }
@@ -85,7 +85,7 @@ function setupCollectibleDetailModal() {
         overlay.setAttribute('aria-hidden', 'false');
     }
     
-    grid.addEventListener('dblclick', (e) => {
+    grid.addEventListener('click', (e) => {
         const wrapper = e.target.closest('.collectible-item-wrapper');
         const item = wrapper?.querySelector('.collectible-item') || e.target.closest('.collectible-item');
         if (!item) return;

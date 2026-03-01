@@ -815,10 +815,10 @@ header h1 {
 }
 
 .marble-zoom-modal {
-    background: linear-gradient(180deg, #fff9f7 0%, #fff5f2 100%);
+    background: linear-gradient(180deg, #f1fcfb 0%, #e8f8f6 100%);
     border-radius: 24px;
     padding: 32px;
-    max-width: 280px;
+    max-width: 340px;
     width: 100%;
     position: relative;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
@@ -848,21 +848,29 @@ header h1 {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 12px;
-    min-height: 160px;
+    justify-content: flex-start;
+    gap: 14px;
+    min-height: 220px;
+    text-align: center;
 }
 
 .marble-zoom-name {
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 1.15rem;
+    font-weight: 700;
     color: var(--text-primary);
+}
+
+.marble-zoom-description {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
 }
 
 .marble-zoom-content .marble-zoom-preview {
     width: 140px;
     height: 140px;
-    border-radius: 50%;
+    border-radius: 0;
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
@@ -873,17 +881,23 @@ header h1 {
 .marble-zoom-content .marble-zoom-gradient {
     width: 140px;
     height: 140px;
-    border-radius: 50%;
+    border-radius: 0;
     position: relative;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
 .marble-zoom-content .marble-zoom-gradient::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.6) 0%, transparent 50%);
+    content: none;
+}
+
+.marble-zoom-image {
+    width: 140px;
+    height: 140px;
+    object-fit: contain;
+    display: block;
+    background: transparent;
+    box-shadow: none;
+    border: none;
 }
 
 /* Animations */
