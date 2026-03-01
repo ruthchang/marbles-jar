@@ -407,7 +407,6 @@ function applyStateData(parsed) {
     state.enabledCollectibles = Array.isArray(parsed.enabledCollectibles)
         ? [...new Set(parsed.enabledCollectibles.map(normalizeType))].filter(k => collectibles[k])
         : allTypes;
-    if (state.enabledCollectibles.length === 0) state.enabledCollectibles = allTypes;
     state.totalMarbles = state.marbles.length;
     state.jarType = jarTypes[parsed.jarType] ? parsed.jarType : 'classic';
     state.jarCapacity = Math.min(200, Math.max(10, parsed.jarCapacity ?? 50));
@@ -417,14 +416,16 @@ function applyStateData(parsed) {
 // Load state from localStorage
 function loadState() {
     const saved = localStorage.getItem('marbleJarState');
+    let parsed = false;
     if (saved) {
         try {
             applyStateData(JSON.parse(saved));
+            parsed = true;
         } catch (e) {
             console.warn('Failed to parse saved state', e);
         }
     }
-    if (state.enabledCollectibles.length === 0) {
+    if (!parsed && state.enabledCollectibles.length === 0) {
         state.enabledCollectibles = Object.keys(collectibles);
     }
 }
@@ -442,6 +443,7 @@ function saveState() {
 // Render collectible options
 function renderCollectibles() {
     const picker = document.getElementById('collectiblePicker');
+    if (!picker) return;
     picker.innerHTML = Object.entries(collectibles).map(([key, config]) => {
         const label = config.name.split(/\s+/).slice(1).join(' ') || config.name;
         const enabled = state.enabledCollectibles.includes(key);
@@ -468,10 +470,6 @@ function renderCollectibles() {
                 if (!state.enabledCollectibles.includes(key)) state.enabledCollectibles.push(key);
             } else {
                 state.enabledCollectibles = state.enabledCollectibles.filter(k => k !== key);
-                if (state.enabledCollectibles.length === 0) {
-                    state.enabledCollectibles.push(key);
-                    cb.checked = true;
-                }
             }
             option.classList.toggle('enabled', cb.checked);
             saveState();
@@ -488,6 +486,23 @@ function renderCollectibles() {
             saveState();
         });
     });
+}
+
+function setAllCollectiblesEnabled(enabled) {
+    const allTypes = Object.keys(collectibles);
+    state.enabledCollectibles = enabled ? [...allTypes] : [];
+
+    const picker = document.getElementById('collectiblePicker');
+    if (picker) {
+        picker.querySelectorAll('.collectible-option').forEach((option) => {
+            const checkbox = option.querySelector('.collectible-option-checkbox');
+            if (!checkbox) return;
+            checkbox.checked = enabled;
+            option.classList.toggle('enabled', enabled);
+        });
+    }
+
+    saveState();
 }
 
 // Get jar boundaries based on jar type
@@ -1677,6 +1692,12 @@ function setupEventListeners() {
         if (confirm('Empty your jar? This will remove all collected items.')) {
             clearAllMarbles();
         }
+    });
+    document.getElementById('selectAllCollectiblesBtn')?.addEventListener('click', () => {
+        setAllCollectiblesEnabled(true);
+    });
+    document.getElementById('deselectAllCollectiblesBtn')?.addEventListener('click', () => {
+        setAllCollectiblesEnabled(false);
     });
 }
 

@@ -579,15 +579,42 @@ header h1 {
     gap: 8px;
 }
 
+.collectible-bulk-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.collectible-bulk-btn {
+    flex: 1;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--accent);
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.collectible-bulk-btn:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+}
+
+.collectible-bulk-btn.secondary {
+    background: #8aa2a0;
+}
+
 .collectible-option {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 4px;
     padding: 8px 6px;
-    padding-left: 28px;
-    position: relative;
     aspect-ratio: 1;
     background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
     border: 2px solid transparent;
@@ -603,19 +630,13 @@ header h1 {
 }
 
 .collectible-option-checkbox {
-    position: absolute;
-    left: 6px;
-    top: 50%;
-    transform: translateY(-50%);
+    position: static;
     width: 16px;
     height: 16px;
     margin: 0;
+    margin-bottom: 4px;
     accent-color: var(--accent);
     cursor: pointer;
-}
-
-.collectible-option:not(.enabled) {
-    opacity: 0.5;
 }
 
 .collectible-option-content {
@@ -623,6 +644,7 @@ header h1 {
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    width: 100%;
 }
 
 .collectible-option-icon {
