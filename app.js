@@ -127,6 +127,10 @@ let marbleBodies = [];
 let restoreTimer = null;
 let restoreMarbleTimers = [];
 
+const SETTLE_LINEAR_SPEED = 0.05;
+const SETTLE_ANGULAR_SPEED = 0.015;
+const SETTLE_FRAMES = 12;
+
 // Image cache for sprites
 const imageCache = {};
 
@@ -553,7 +557,8 @@ function setupPhysics() {
     
     // Create engine with lower gravity for gentler movement
     engine = Engine.create({
-        gravity: { x: 0, y: 0.8 }
+        gravity: { x: 0, y: 0.8 },
+        enableSleeping: false
     });
     
     // Create renderer
@@ -565,6 +570,7 @@ function setupPhysics() {
             height: height,
             wireframes: false,
             background: 'transparent',
+            showSleeping: false,
             pixelRatio: window.devicePixelRatio || 1
         }
     });
@@ -577,8 +583,9 @@ function setupPhysics() {
     const wallOptions = {
         isStatic: true,
         render: { visible: false },
-        friction: 0.3,
-        restitution: 0.2
+        friction: 0.08,
+        frictionStatic: 0,
+        restitution: 0.02
     };
     
     const wallThickness = 30;
@@ -774,23 +781,7 @@ function setupPhysics() {
         
         jarWalls.push(Bodies.rectangle(centerX, jarTop - wallThickness/2, jarRight - jarLeft + 20, wallThickness, wallOptions));
         
-        // Corner curves flush with floor - no raised shelves
-        const cornerR = 22;
-        for (let i = 0; i < 8; i++) {
-            const t = i / 7;
-            const angle1 = Math.PI / 2 + (Math.PI / 2.5) * t;
-            jarWalls.push(Bodies.circle(
-                jarLeft + cornerR + Math.cos(angle1) * cornerR,
-                jarBottom - 2 + Math.sin(angle1) * cornerR,
-                5, wallOptions
-            ));
-            const angle2 = Math.PI / 2 - (Math.PI / 2.5) * t;
-            jarWalls.push(Bodies.circle(
-                jarRight - cornerR + Math.cos(angle2) * cornerR,
-                jarBottom - 2 + Math.sin(angle2) * cornerR,
-                5, wallOptions
-            ));
-        }
+        // Rounded corners are handled by logical clamping in checkMarbleBounds().
     }
     
     Composite.add(engine.world, jarWalls);
@@ -813,6 +804,18 @@ function setupPhysics() {
     setupMarbleZoom(canvas);
 }
 
+function wakeMarble(marble) {
+    marble._settleFrames = 0;
+    if (marble._lockedSettled) {
+        Body.setStatic(marble, false);
+        marble._lockedSettled = false;
+    }
+}
+
+function wakeAllMarbles() {
+    marbleBodies.forEach(wakeMarble);
+}
+
 // Check and respawn marbles that escape the jar bounds
 function checkMarbleBounds() {
     const container = document.getElementById('jarContainer');
@@ -822,7 +825,6 @@ function checkMarbleBounds() {
     const bounds = getJarBoundaries(width, height);
     const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius, shape } = bounds;
     const centerX = width / 2;
-    
     marbleBodies.forEach(marble => {
         const pos = marble.position;
         const radius = marble.circleRadius || getMarbleSize() / 2;
@@ -890,8 +892,8 @@ function checkMarbleBounds() {
         if (corrected) {
             Body.setPosition(marble, { x: correctedX, y: correctedY });
             Body.setVelocity(marble, {
-                x: marble.velocity.x * -0.2,
-                y: marble.velocity.y * -0.2
+                x: marble.velocity.x * -0.15,
+                y: marble.velocity.y * -0.15
             });
         }
         
@@ -903,30 +905,65 @@ function checkMarbleBounds() {
         
         // Check if marble has crazy velocity (flung too hard)
         const speed = Math.sqrt(marble.velocity.x ** 2 + marble.velocity.y ** 2);
+        const angularSpeed = Math.abs(marble.angularVelocity || 0);
         if (speed > 30) {
             Body.setVelocity(marble, { 
                 x: marble.velocity.x * 0.3, 
                 y: marble.velocity.y * 0.3 
             });
         }
-        
-        // Check if marble is stuck in bottom corners (slow velocity, near corner)
-        const nearLeftCorner = pos.x < jarLeft + 50;
-        const nearRightCorner = pos.x > jarRight - 50;
-        const isNearBottom = pos.y > jarBottom - 60;
-        const isMovingSlow = speed < 0.8;
-        
-        if (isNearBottom && (nearLeftCorner || nearRightCorner) && isMovingSlow) {
-            // Nudge toward center and down so marbles settle on the floor
-            const nudgeX = nearLeftCorner ? 0.0012 : -0.0012;
-            Body.applyForce(marble, pos, { x: nudgeX, y: 0.001 });
+
+        // Aggressively damp residual spin; otherwise bodies can keep rotating forever.
+        if (angularSpeed < 0.035) {
+            if (angularSpeed !== 0) Body.setAngularVelocity(marble, 0);
+        } else if (speed < 0.35) {
+            Body.setAngularVelocity(marble, marble.angularVelocity * 0.82);
         }
-        
-        // If marble is above the center and not moving much, nudge it toward center-bottom
-        const jarCenterY = (jarTop + jarBottom) / 2;
-        if (pos.y < jarCenterY && speed < 1) {
-            const nudgeX = (centerX - pos.x) * 0.00003;
-            Body.applyForce(marble, pos, { x: nudgeX, y: 0.0004 });
+
+        const nearFloorLine = correctedY >= maxY - 6;
+        const nearBottomRegion = correctedY >= jarBottom - Math.max(90, curveRadius + 35);
+        const isNearSideWall = correctedX <= minX + 2 || correctedX >= maxX - 2;
+        const hasSupportBelow = marbleBodies.some((other) => {
+            if (other === marble) return false;
+            const verticalGap = other.position.y - correctedY;
+            if (verticalGap < radius * 0.55 || verticalGap > radius * 2.3) return false;
+            return Math.abs(other.position.x - correctedX) < radius * 1.75;
+        });
+        const canSleepHere = nearBottomRegion && (nearFloorLine || hasSupportBelow);
+
+        // Never keep a body locked if it's not in the floor-settle zone.
+        if (marble._lockedSettled && !nearBottomRegion) {
+            Body.setStatic(marble, false);
+            marble._lockedSettled = false;
+            marble._settleFrames = 0;
+        }
+        const shouldSettleLock =
+            canSleepHere &&
+            ((speed < SETTLE_LINEAR_SPEED && angularSpeed < SETTLE_ANGULAR_SPEED) ||
+            (speed < 0.12 && angularSpeed < 0.04));
+
+        if (shouldSettleLock) {
+            marble._settleFrames = (marble._settleFrames || 0) + 1;
+            if (marble._settleFrames >= SETTLE_FRAMES) {
+                Body.setVelocity(marble, { x: 0, y: 0 });
+                Body.setAngularVelocity(marble, 0);
+                marble.force.x = 0;
+                marble.force.y = 0;
+                marble.torque = 0;
+                if (!marble._lockedSettled) {
+                    Body.setStatic(marble, true);
+                    marble._lockedSettled = true;
+                }
+                return;
+            }
+        } else {
+            marble._settleFrames = 0;
+        }
+
+        // If an item is hugging a side wall without support, nudge it downward.
+        if (isNearSideWall && !canSleepHere && speed < 0.35) {
+            const pushX = correctedX < centerX ? 0.00008 : -0.00008;
+            Body.applyForce(marble, marble.position, { x: pushX, y: 0.00033 });
         }
         
         if (needsReset) {
@@ -1049,6 +1086,7 @@ function setupShakeInteraction() {
             const maxVel = 15;
             velocityX = Math.max(-maxVel, Math.min(maxVel, velocityX));
             velocityY = Math.max(-maxVel, Math.min(maxVel, velocityY));
+            wakeAllMarbles();
             marbleBodies.forEach(marble => {
                 Body.applyForce(marble, marble.position, {
                     x: velocityX * 0.0005,
@@ -1107,6 +1145,9 @@ function setupShakeInteraction() {
 
     function setEngineGravity(x, y) {
         if (!engine || !engine.gravity) return;
+        const dx = Math.abs((engine.gravity.x || 0) - x);
+        const dy = Math.abs((engine.gravity.y || 0) - y);
+        if (dx + dy > 0.04) wakeAllMarbles();
         engine.gravity.x = x;
         engine.gravity.y = y;
     }
@@ -1180,6 +1221,7 @@ function setupShakeInteraction() {
         lastMotionAt = now;
         shakeHint.classList.add('hidden');
 
+        wakeAllMarbles();
         marbleBodies.forEach(marble => {
             Body.applyForce(marble, marble.position, {
                 x: x * 0.0007,
@@ -1285,12 +1327,12 @@ function setupMarbleZoom(canvas) {
 
         let preview = '';
         if (isMarbleType) {
-            const gradient = `radial-gradient(circle at 30% 30%, ${lightenColor(marble.marbleColor || '#FF69B4', 40)} 0%, ${marble.marbleColor || '#FF69B4'} 50%, ${darkenColor(marble.marbleColor || '#FF69B4', 30)} 100%)`;
+            const gradient = `radial-gradient(circle at 30% 30%, ${lightenColor(marble.marbleColor || '#1AA39D', 40)} 0%, ${marble.marbleColor || '#1AA39D'} 50%, ${darkenColor(marble.marbleColor || '#1AA39D', 30)} 100%)`;
             preview = `<div class="marble-zoom-gradient" style="background: ${gradient};"></div>`;
         } else if (marble.marbleImage && isSafeImageUrl(marble.marbleImage)) {
             preview = `<div class="marble-zoom-preview" style="background-image: url('${marble.marbleImage.replace(/'/g, "\\'")}');"></div>`;
         } else {
-            preview = `<div class="marble-zoom-gradient" style="background: ${marble.marbleColor || '#FF69B4'};"></div>`;
+            preview = `<div class="marble-zoom-gradient" style="background: ${marble.marbleColor || '#1AA39D'};"></div>`;
         }
         content.innerHTML = `${preview}<span class="marble-zoom-name">${escapeHtml(name)}</span>`;
 
@@ -1418,10 +1460,12 @@ function addMarble(type) {
     }
     
     const marble = Bodies.circle(x, y, radius, {
-        restitution: 0.6,
+        restitution: 0.18,
         friction: 0.05,
-        frictionAir: 0.001,
+        frictionStatic: 0.01,
+        frictionAir: 0.008,
         density: 0.001,
+        sleepThreshold: 25,
         render: renderOptions
     });
     
@@ -1549,18 +1593,20 @@ function restoreMarbles() {
                     };
                 } else {
                     renderOptions = {
-                        fillStyle: marbleData.fallbackColor || '#FF69B4',
-                        strokeStyle: darkenColor(marbleData.fallbackColor || '#FF69B4', 20),
+                        fillStyle: marbleData.fallbackColor || '#1AA39D',
+                        strokeStyle: darkenColor(marbleData.fallbackColor || '#1AA39D', 20),
                         lineWidth: 2
                     };
                 }
             }
             
             const marble = Bodies.circle(x, y, radius, {
-                restitution: 0.6,
+                restitution: 0.18,
                 friction: 0.05,
-                frictionAir: 0.001,
+                frictionStatic: 0.01,
+                frictionAir: 0.008,
                 density: 0.001,
+                sleepThreshold: 25,
                 render: renderOptions
             });
             
