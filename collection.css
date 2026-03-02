@@ -216,8 +216,8 @@
 }
 
 .collectible-item.locked {
-    filter: grayscale(100%);
-    opacity: 0.5;
+    filter: none;
+    opacity: 1;
 }
 
 .collectible-item.collected {

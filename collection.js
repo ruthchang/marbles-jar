@@ -111,7 +111,6 @@ function setupCollectibleDetailModal() {
         const wrapper = e.target.closest('.collectible-item-wrapper');
         const item = wrapper?.querySelector('.collectible-item') || e.target.closest('.collectible-item');
         if (!item) return;
-        if (item.dataset.collected !== 'true') return;
         
         const categoryKey = item.dataset.category;
         const index = parseInt(item.dataset.index, 10);
@@ -185,7 +184,7 @@ function renderCollection(collected) {
                                         <div class="fallback-circle" style="display: none; background: ${category.fallbackColors[index]};"></div>
                                     </div>
                                     <div class="collectible-item-footer">
-                                        <span class="collectible-item-name${itemName.length > 8 ? ' long-name' : ''}">${isCollected ? escapeHtml(itemName) : ''}</span>
+                                        <span class="collectible-item-name${itemName.length > 8 ? ' long-name' : ''}">${escapeHtml(itemName)}</span>
                                     </div>
                                 </div>
                                 <div class="collectible-item-badges">
@@ -226,7 +225,7 @@ function renderMarbleItems(category, collected, categoryKey) {
                         <div class="marble-shine"></div>
                     </div>
                     <div class="collectible-item-footer">
-                        <span class="collectible-item-name${itemName.length > 8 ? ' long-name' : ''}">${isCollected ? escapeHtml(itemName) : ''}</span>
+                        <span class="collectible-item-name${itemName.length > 8 ? ' long-name' : ''}">${escapeHtml(itemName)}</span>
                     </div>
                 </div>
                 <div class="collectible-item-badges">
