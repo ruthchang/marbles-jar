@@ -1,5 +1,8 @@
 // Matter.js setup
 const { Engine, Render, Runner, Bodies, Body, Composite, Events, Query } = Matter;
+const DEFAULT_JAR_CAPACITY = 100;
+const MIN_JAR_CAPACITY = 10;
+const MAX_JAR_CAPACITY = 500;
 
 // App State
 let state = {
@@ -8,8 +11,7 @@ let state = {
     collectibleType: 'marble',
     enabledCollectibles: [], // Populated on init; which types can appear when randomly adding
     totalMarbles: 0,
-    jarType: 'classic',
-    jarCapacity: 50,
+    jarCapacity: DEFAULT_JAR_CAPACITY,
     soundTheme: 'default'
 };
 
@@ -89,34 +91,7 @@ const soundThemes = {
     }
 };
 
-// Jar configurations
-const jarTypes = {
-    classic: {
-        name: '🫙 Classic Jar',
-        description: 'Traditional mason jar',
-        cssClass: 'jar-classic'
-    },
-    round: {
-        name: '🔮 Round Bowl',
-        description: 'Spherical fishbowl shape',
-        cssClass: 'jar-round'
-    },
-    tall: {
-        name: '🧪 Tall Vase',
-        description: 'Elegant tall vase',
-        cssClass: 'jar-tall'
-    },
-    wide: {
-        name: '🥣 Wide Basin',
-        description: 'Shallow wide dish',
-        cssClass: 'jar-wide'
-    },
-    heart: {
-        name: '💖 Heart Jar',
-        description: 'Heart-shaped container',
-        cssClass: 'jar-heart'
-    }
-};
+const JAR_CLASS = 'jar-classic';
 
 // Audio context for sound effects
 let audioCtx = null;
@@ -148,6 +123,32 @@ let zoomHintObserver = null;
 const SETTLE_LINEAR_SPEED = 0.05;
 const SETTLE_ANGULAR_SPEED = 0.015;
 const SETTLE_FRAMES = 12;
+
+const JAR_SHAPE = {
+    neckLeft: 0.345,
+    neckRight: 0.655,
+    neckTop: 0.108,
+    neckBottom: 0.246,
+    shoulderLeft: 0.255,
+    shoulderRight: 0.745,
+    shoulderY: 0.39,
+    bodyLeft: 0.225,
+    bodyRight: 0.775,
+    sideBottomY: 0.84,
+    bottomLeft: 0.34,
+    bottomRight: 0.66,
+    bottomCurveY: 0.95
+};
+
+const JAR_SHAPE_TUNER_STORAGE_KEY = 'marbleJarShapeTunerV2';
+const JAR_SHAPE_TUNER_DEFAULTS = {
+    mouthWidth: 50,
+    neckHeight: 1.2,
+    shoulderRoundness: 86,
+    bodyWidth: 74
+};
+let jarShapeTuner = { ...JAR_SHAPE_TUNER_DEFAULTS };
+let jarShapeRebuildTimer = null;
 
 // Image cache for sprites
 const imageCache = {};
@@ -282,10 +283,117 @@ function onSyncAuthChange(signedIn, user) {
     }
 }
 
+function clampNumber(value, min, max, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+}
+
+function normalizeJarShapeTuner(candidate = {}) {
+    return {
+        mouthWidth: clampNumber(candidate.mouthWidth, 36, 66, JAR_SHAPE_TUNER_DEFAULTS.mouthWidth),
+        neckHeight: clampNumber(candidate.neckHeight, 0, 8, JAR_SHAPE_TUNER_DEFAULTS.neckHeight),
+        shoulderRoundness: clampNumber(candidate.shoulderRoundness, 0, 100, JAR_SHAPE_TUNER_DEFAULTS.shoulderRoundness),
+        bodyWidth: clampNumber(candidate.bodyWidth, 58, 82, JAR_SHAPE_TUNER_DEFAULTS.bodyWidth)
+    };
+}
+
+function deriveJarShapeFromTuner(tuner) {
+    const normalized = normalizeJarShapeTuner(tuner);
+    const mouthHalf = normalized.mouthWidth / 200;
+    const roundness = normalized.shoulderRoundness / 100;
+    const neckTop = 0.098;
+    const neckBottom = Math.min(0.18, neckTop + normalized.neckHeight / 300);
+    const bodyHalf = normalized.bodyWidth / 205;
+    const shoulderBlend = 1;
+    const shoulderHalf = bodyHalf * shoulderBlend;
+    const bottomHalf = bodyHalf * 0.74;
+    const shoulderY = 0.305 + (1 - roundness) * 0.024;
+    return {
+        neckLeft: 0.5 - mouthHalf,
+        neckRight: 0.5 + mouthHalf,
+        neckTop,
+        neckBottom,
+        shoulderLeft: 0.5 - shoulderHalf,
+        shoulderRight: 0.5 + shoulderHalf,
+        shoulderY,
+        bodyLeft: 0.5 - bodyHalf,
+        bodyRight: 0.5 + bodyHalf,
+        sideBottomY: 0.865,
+        bottomLeft: 0.5 - bottomHalf,
+        bottomRight: 0.5 + bottomHalf,
+        bottomCurveY: 0.962
+    };
+}
+
+function applyJarShapeFromTuner() {
+    Object.assign(JAR_SHAPE, deriveJarShapeFromTuner(jarShapeTuner));
+}
+
+function saveJarShapeTuner() {
+    localStorage.setItem(JAR_SHAPE_TUNER_STORAGE_KEY, JSON.stringify(jarShapeTuner));
+}
+
+function renderJarShapeTunerControls() {
+    const mouthInput = document.getElementById('jarShapeMouthInput');
+    const neckInput = document.getElementById('jarShapeNeckInput');
+    const shoulderInput = document.getElementById('jarShapeShoulderInput');
+    const bodyInput = document.getElementById('jarShapeBodyInput');
+    if (!mouthInput || !neckInput || !shoulderInput || !bodyInput) return;
+
+    mouthInput.value = String(jarShapeTuner.mouthWidth);
+    neckInput.value = String(jarShapeTuner.neckHeight);
+    shoulderInput.value = String(jarShapeTuner.shoulderRoundness);
+    bodyInput.value = String(jarShapeTuner.bodyWidth);
+
+    const mouthValue = document.getElementById('jarShapeMouthValue');
+    const neckValue = document.getElementById('jarShapeNeckValue');
+    const shoulderValue = document.getElementById('jarShapeShoulderValue');
+    const bodyValue = document.getElementById('jarShapeBodyValue');
+    if (mouthValue) mouthValue.textContent = `${jarShapeTuner.mouthWidth.toFixed(1)}%`;
+    if (neckValue) neckValue.textContent = `${jarShapeTuner.neckHeight.toFixed(1)}%`;
+    if (shoulderValue) shoulderValue.textContent = `${Math.round(jarShapeTuner.shoulderRoundness)}%`;
+    if (bodyValue) bodyValue.textContent = `${jarShapeTuner.bodyWidth.toFixed(1)}%`;
+}
+
+function scheduleJarShapeRebuild() {
+    if (jarShapeRebuildTimer) clearTimeout(jarShapeRebuildTimer);
+    jarShapeRebuildTimer = setTimeout(() => {
+        jarShapeRebuildTimer = null;
+        if (!engine) return;
+        rebuildPhysics();
+    }, 90);
+}
+
+function updateJarShapeTuner(nextValues, options = {}) {
+    const { save = true, rebuild = true } = options;
+    jarShapeTuner = normalizeJarShapeTuner({ ...jarShapeTuner, ...nextValues });
+    applyJarShapeFromTuner();
+    renderJarShapeTunerControls();
+    updateJarSvgPaths();
+    if (rebuild) scheduleJarShapeRebuild();
+    if (save) saveJarShapeTuner();
+}
+
+function loadJarShapeTuner() {
+    let parsed = null;
+    const saved = localStorage.getItem(JAR_SHAPE_TUNER_STORAGE_KEY);
+    if (saved) {
+        try {
+            parsed = JSON.parse(saved);
+        } catch (e) {
+            console.warn('Failed to parse jar shape tuner settings', e);
+        }
+    }
+    jarShapeTuner = normalizeJarShapeTuner({ ...JAR_SHAPE_TUNER_DEFAULTS, ...(parsed || {}) });
+    applyJarShapeFromTuner();
+}
+
 // Initialize the app
 async function init() {
     preloadImages();
     loadState();
+    loadJarShapeTuner();
     if (typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
         Sync.init();
         const session = await Sync.getSession();
@@ -298,8 +406,10 @@ async function init() {
         }
     }
     applyJarType();
+    updateJarSvgPaths();
     setupPhysics();
     setupEventListeners();
+    renderJarShapeTunerControls();
     setJarZoom(false);
     renderCollectibles();
     renderSoundSettings();
@@ -315,6 +425,7 @@ async function init() {
     window.addEventListener('resize', () => {
         if (viewportResizeTimer) clearTimeout(viewportResizeTimer);
         viewportResizeTimer = setTimeout(() => {
+            updateJarSvgPaths();
             if (!engine || marbleBodies.length === 0) return;
             resizeExistingMarbles();
             checkMarbleBounds();
@@ -326,11 +437,149 @@ async function init() {
 function applyJarType() {
     const container = document.getElementById('jarContainer');
     if (!container) return;
-    Object.values(jarTypes).forEach(jar => {
-        container.classList.remove(jar.cssClass);
-    });
-    const jar = jarTypes[state.jarType] || jarTypes.classic;
-    container.classList.add(jar.cssClass);
+    container.classList.add(JAR_CLASS);
+}
+
+function getJarGeometry(width, height) {
+    const px = (v) => width * v;
+    const py = (v) => height * v;
+    const roundness = jarShapeTuner.shoulderRoundness / 100;
+    const shoulderDelta = Math.max(0.03, JAR_SHAPE.shoulderY - JAR_SHAPE.neckBottom);
+    const shoulderC1Y = JAR_SHAPE.neckBottom + shoulderDelta * (0.26 + 0.18 * roundness);
+    const shoulderC2Y = JAR_SHAPE.neckBottom + shoulderDelta * (0.68 + 0.26 * roundness);
+    const shoulderC1X = JAR_SHAPE.neckLeft - (0.0005 + 0.004 * roundness);
+    const shoulderC2X = JAR_SHAPE.shoulderLeft;
+    const sideBow = 0;
+    const lowerY1 = JAR_SHAPE.sideBottomY + (JAR_SHAPE.bottomCurveY - JAR_SHAPE.sideBottomY) * 0.40;
+    const lowerY2 = JAR_SHAPE.sideBottomY + (JAR_SHAPE.bottomCurveY - JAR_SHAPE.sideBottomY) * 0.9;
+    const lowerX1 = JAR_SHAPE.bodyLeft + (JAR_SHAPE.bottomLeft - JAR_SHAPE.bodyLeft) * 0.10;
+    const lowerX2 = JAR_SHAPE.bodyLeft + (JAR_SHAPE.bottomLeft - JAR_SHAPE.bodyLeft) * 0.70;
+    return {
+        neckLeftX: px(JAR_SHAPE.neckLeft),
+        neckRightX: px(JAR_SHAPE.neckRight),
+        neckTopY: py(JAR_SHAPE.neckTop),
+        neckBottomY: py(JAR_SHAPE.neckBottom),
+        shoulderLeftX: px(JAR_SHAPE.shoulderLeft),
+        shoulderRightX: px(JAR_SHAPE.shoulderRight),
+        shoulderY: py(JAR_SHAPE.shoulderY),
+        bodyLeftX: px(JAR_SHAPE.bodyLeft),
+        bodyRightX: px(JAR_SHAPE.bodyRight),
+        sideBottomY: py(JAR_SHAPE.sideBottomY),
+        bottomLeftX: px(JAR_SHAPE.bottomLeft),
+        bottomRightX: px(JAR_SHAPE.bottomRight),
+        bottomCurveY: py(JAR_SHAPE.bottomCurveY),
+        leftShoulderC1X: px(shoulderC1X),
+        leftShoulderC1Y: py(shoulderC1Y),
+        leftShoulderC2X: px(shoulderC2X),
+        leftShoulderC2Y: py(shoulderC2Y),
+        leftBodyC1X: px(JAR_SHAPE.bodyLeft - sideBow),
+        leftBodyC1Y: py(JAR_SHAPE.shoulderY + (JAR_SHAPE.sideBottomY - JAR_SHAPE.shoulderY) * 0.38),
+        leftBodyC2X: px(JAR_SHAPE.bodyLeft - sideBow * 0.6),
+        leftBodyC2Y: py(JAR_SHAPE.shoulderY + (JAR_SHAPE.sideBottomY - JAR_SHAPE.shoulderY) * 0.78),
+        leftLowerC1X: px(lowerX1),
+        leftLowerC1Y: py(lowerY1),
+        leftLowerC2X: px(lowerX2),
+        leftLowerC2Y: py(lowerY2),
+        rightShoulderC1X: px(1 - shoulderC2X),
+        rightShoulderC1Y: py(shoulderC2Y),
+        rightShoulderC2X: px(1 - shoulderC1X),
+        rightShoulderC2Y: py(shoulderC1Y),
+        rightBodyC1X: px(JAR_SHAPE.bodyRight + sideBow),
+        rightBodyC1Y: py(JAR_SHAPE.shoulderY + (JAR_SHAPE.sideBottomY - JAR_SHAPE.shoulderY) * 0.38),
+        rightBodyC2X: px(JAR_SHAPE.bodyRight + sideBow * 0.6),
+        rightBodyC2Y: py(JAR_SHAPE.shoulderY + (JAR_SHAPE.sideBottomY - JAR_SHAPE.shoulderY) * 0.78),
+        rightLowerC1X: px(1 - lowerX1),
+        rightLowerC1Y: py(lowerY1),
+        rightLowerC2X: px(1 - lowerX2),
+        rightLowerC2Y: py(lowerY2)
+    };
+}
+
+function getCubicPoint(p0, p1, p2, p3, t) {
+    const mt = 1 - t;
+    const mt2 = mt * mt;
+    const t2 = t * t;
+    return {
+        x: mt2 * mt * p0.x + 3 * mt2 * t * p1.x + 3 * mt * t2 * p2.x + t2 * t * p3.x,
+        y: mt2 * mt * p0.y + 3 * mt2 * t * p1.y + 3 * mt * t2 * p2.y + t2 * t * p3.y
+    };
+}
+
+function buildShoulderSegmentWalls(g, wallOptions, wallThickness) {
+    const segments = [];
+    const sideThickness = wallThickness / 2.1;
+    const steps = 8;
+
+    const leftP0 = { x: g.neckLeftX, y: g.neckBottomY };
+    const leftP1 = { x: g.leftShoulderC1X, y: g.leftShoulderC1Y };
+    const leftP2 = { x: g.leftShoulderC2X, y: g.leftShoulderC2Y };
+    const leftP3 = { x: g.shoulderLeftX, y: g.shoulderY };
+
+    const rightP0 = { x: g.shoulderRightX, y: g.shoulderY };
+    const rightP1 = { x: g.rightShoulderC1X, y: g.rightShoulderC1Y };
+    const rightP2 = { x: g.rightShoulderC2X, y: g.rightShoulderC2Y };
+    const rightP3 = { x: g.neckRightX, y: g.neckBottomY };
+
+    const addCurveSegments = (p0, p1, p2, p3) => {
+        let prev = getCubicPoint(p0, p1, p2, p3, 0);
+        for (let i = 1; i <= steps; i += 1) {
+            const t = i / steps;
+            const next = getCubicPoint(p0, p1, p2, p3, t);
+            const dx = next.x - prev.x;
+            const dy = next.y - prev.y;
+            const length = Math.max(20, Math.hypot(dx, dy) + 8);
+            const angle = Math.atan2(dy, dx);
+            segments.push(Bodies.rectangle(
+                (prev.x + next.x) / 2,
+                (prev.y + next.y) / 2,
+                length,
+                sideThickness,
+                { ...wallOptions, angle }
+            ));
+            prev = next;
+        }
+    };
+
+    addCurveSegments(leftP0, leftP1, leftP2, leftP3);
+    addCurveSegments(rightP0, rightP1, rightP2, rightP3);
+    return segments;
+}
+
+function buildJarPathData(width, height, closed = false) {
+    const g = getJarGeometry(width, height);
+    const d = [
+        `M${g.neckLeftX} ${g.neckTopY}`,
+        `L${g.neckLeftX} ${g.neckBottomY}`,
+        `C${g.leftShoulderC1X} ${g.leftShoulderC1Y} ${g.leftShoulderC2X} ${g.leftShoulderC2Y} ${g.shoulderLeftX} ${g.shoulderY}`,
+        `C${g.leftBodyC1X} ${g.leftBodyC1Y} ${g.leftBodyC2X} ${g.leftBodyC2Y} ${g.bodyLeftX} ${g.sideBottomY}`,
+        `C${g.leftLowerC1X} ${g.leftLowerC1Y} ${g.leftLowerC2X} ${g.leftLowerC2Y} ${g.bottomLeftX} ${g.bottomCurveY}`,
+        `L${g.bottomRightX} ${g.bottomCurveY}`,
+        `C${g.rightLowerC2X} ${g.rightLowerC2Y} ${g.rightLowerC1X} ${g.rightLowerC1Y} ${g.bodyRightX} ${g.sideBottomY}`,
+        `C${g.rightBodyC2X} ${g.rightBodyC2Y} ${g.rightBodyC1X} ${g.rightBodyC1Y} ${g.shoulderRightX} ${g.shoulderY}`,
+        `C${g.rightShoulderC1X} ${g.rightShoulderC1Y} ${g.rightShoulderC2X} ${g.rightShoulderC2Y} ${g.neckRightX} ${g.neckBottomY}`,
+        `L${g.neckRightX} ${g.neckTopY}`
+    ];
+    if (closed) d.push('Z');
+    return d.join(' ');
+}
+
+function updateJarSvgPaths() {
+    const container = document.getElementById('jarContainer');
+    if (!container) return;
+    const width = container.offsetWidth || 304;
+    const height = container.offsetHeight || 390;
+    const fillSvg = container.querySelector('.jar-fill-full');
+    const fillPath = fillSvg?.querySelector('path');
+    const outlineSvg = container.querySelector('.jar-outline-full');
+    const outlinePath = outlineSvg?.querySelector('path');
+    const outlineD = buildJarPathData(width, height, false);
+    const fillD = buildJarPathData(width, height, true);
+    if (fillSvg) fillSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    if (outlineSvg) outlineSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    if (fillPath) fillPath.setAttribute('d', fillD);
+    if (outlinePath) outlinePath.setAttribute('d', outlineD);
+    const lidWidth = clampNumber(jarShapeTuner.mouthWidth + 8, 38, 72, 56);
+    container.style.setProperty('--lid-width', `${lidWidth}%`);
 }
 
 // Get collectible size from jar geometry, tuned so ~100 pieces fill near the top.
@@ -347,15 +596,7 @@ function getMarbleSize() {
     const interiorHeight = Math.max(20, bounds.bottom - bounds.top - 8);
     let usableArea = interiorWidth * interiorHeight;
 
-    // Rough occupancy by jar shape inside its own bounding rectangle.
-    const shapeAreaFactor = {
-        classic: 0.84,
-        tall: 0.8,
-        wide: 0.86,
-        round: 0.72,
-        heart: 0.68
-    };
-    usableArea *= shapeAreaFactor[bounds.shape] || 0.82;
+    usableArea *= 0.84;
 
     // Approximate settled packing fill factor.
     const packingFill = 0.76;
@@ -466,8 +707,11 @@ function applyStateData(parsed) {
         });
     }
     state.totalMarbles = state.marbles.length;
-    state.jarType = jarTypes[parsed.jarType] ? parsed.jarType : 'classic';
-    state.jarCapacity = Math.min(200, Math.max(10, parsed.jarCapacity ?? 50));
+    const parsedCapacity = parsed.jarCapacity;
+    const migratedCapacity = (parsedCapacity == null || parsedCapacity === 50)
+        ? DEFAULT_JAR_CAPACITY
+        : parsedCapacity;
+    state.jarCapacity = clampJarCapacity(migratedCapacity);
     state.soundTheme = parsed.soundTheme || 'default';
 
     // Backfill history from current marbles for older saves and keep it inclusive.
@@ -475,6 +719,11 @@ function applyStateData(parsed) {
     Object.entries(inferredHistory).forEach(([key, count]) => {
         state.collectionHistory[key] = Math.max(state.collectionHistory[key] || 0, count);
     });
+
+    if (state.marbles.length > state.jarCapacity) {
+        state.marbles = state.marbles.slice(0, state.jarCapacity);
+        state.totalMarbles = state.marbles.length;
+    }
 }
 
 // Load state from localStorage
@@ -502,6 +751,12 @@ function saveState() {
             if (session) Sync.pushState(state);
         });
     }
+}
+
+function clampJarCapacity(value) {
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n)) return DEFAULT_JAR_CAPACITY;
+    return Math.max(MIN_JAR_CAPACITY, Math.min(MAX_JAR_CAPACITY, n));
 }
 
 function getMarbleVariantIndexByData(type, itemName, fallbackColor, imageUrl) {
@@ -638,58 +893,28 @@ function setAllCollectiblesEnabled(enabled) {
     saveState();
 }
 
-// Get jar boundaries based on jar type
+// Get classic jar boundaries.
 function getJarBoundaries(width, height) {
-    const jarType = state.jarType;
-    
-    switch (jarType) {
-        case 'round':
-            return {
-                left: 25,
-                right: width - 25,
-                top: 40,
-                bottom: height - 20,
-                curveRadius: 80,
-                shape: 'round'
-            };
-        case 'tall':
-            return {
-                left: 55,
-                right: width - 55,
-                top: 35,
-                bottom: height - 20,
-                curveRadius: 30,
-                shape: 'tall'
-            };
-        case 'wide':
-            return {
-                left: 15,
-                right: width - 15,
-                top: 80,
-                bottom: height - 15,
-                curveRadius: 50,
-                shape: 'wide'
-            };
-        case 'heart':
-            return {
-                left: 30,
-                right: width - 30,
-                top: 50,
-                bottom: height - 25,
-                curveRadius: 45,
-                shape: 'heart'
-            };
-        case 'classic':
-        default:
-            return {
-                left: 34,
-                right: width - 34,
-                top: 55,
-                bottom: height - 25,
-                curveRadius: 40,
-                shape: 'classic'
-            };
-    }
+    const g = getJarGeometry(width, height);
+    return {
+        left: g.bodyLeftX,
+        right: g.bodyRightX,
+        top: g.neckBottomY,
+        bottom: g.bottomCurveY,
+        curveRadius: Math.max(12, g.bottomLeftX - g.bodyLeftX),
+        shape: 'classic'
+    };
+}
+
+function getJarNeckBounds(width, height) {
+    const g = getJarGeometry(width, height);
+    return {
+        left: g.neckLeftX,
+        right: g.neckRightX,
+        centerX: (g.neckLeftX + g.neckRightX) / 2,
+        shoulderTop: g.neckBottomY,
+        shoulderBottom: g.shoulderY
+    };
 }
 
 // Setup Matter.js physics
@@ -723,9 +948,9 @@ function setupPhysics() {
         }
     });
     
-    // Get jar boundaries based on type
+    // Get classic jar boundaries.
     const bounds = getJarBoundaries(width, height);
-    const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius, shape } = bounds;
+    const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom } = bounds;
     
     // Create jar walls (invisible boundaries matching the jar shape)
     const wallOptions = {
@@ -738,199 +963,20 @@ function setupPhysics() {
     
     const wallThickness = 30;
     const centerX = width / 2;
+    const g = getJarGeometry(width, height);
     
-    if (shape === 'round') {
-        // Round bowl - complete circular containment with thick boundaries
-        const bowlCenterX = centerX;
-        const bowlCenterY = height / 2 + 25;
-        const bowlRadius = Math.min(width, height) / 2 - 5;
-        
-        // Create complete circular boundary using dense overlapping circles
-        // This creates a solid wall all around the bowl
-        for (let layer = 0; layer < 2; layer++) {
-            const layerRadius = bowlRadius + layer * 12;
-            for (let i = 0; i < 60; i++) {
-                const angle = (Math.PI * 2 * i) / 60;
-                // Create boundary from angles 0.2 to PI - 0.2 (bottom and sides)
-                if (angle > 0.15 && angle < Math.PI - 0.15) {
-                    const x = bowlCenterX + Math.cos(angle) * layerRadius;
-                    const y = bowlCenterY + Math.sin(angle) * (layerRadius * 0.7);
-                    jarWalls.push(Bodies.circle(x, y, 16, wallOptions));
-                }
-            }
-        }
-        
-        // Left side wall - tall solid barrier to prevent side escapes
-        jarWalls.push(Bodies.rectangle(
-            jarLeft - 10, 
-            jarTop + (jarBottom - jarTop) / 2 - 20, 
-            wallThickness, 
-            (jarBottom - jarTop) * 0.7, 
-            wallOptions
-        ));
-        
-        // Right side wall - tall solid barrier
-        jarWalls.push(Bodies.rectangle(
-            jarRight + 10, 
-            jarTop + (jarBottom - jarTop) / 2 - 20, 
-            wallThickness, 
-            (jarBottom - jarTop) * 0.7, 
-            wallOptions
-        ));
-        
-        // Top wall (lid) - solid barrier across the narrow opening
-        jarWalls.push(Bodies.rectangle(centerX, jarTop - 10, width * 0.6, wallThickness + 10, wallOptions));
-        
-        // Additional lid-side connections using dense circles
-        for (let i = 0; i < 10; i++) {
-            const t = i / 9;
-            // Left side connection
-            const leftX = centerX - width * 0.25 - t * 30;
-            const leftY = jarTop + t * 35;
-            jarWalls.push(Bodies.circle(leftX, leftY, 14, wallOptions));
-            // Right side connection
-            const rightX = centerX + width * 0.25 + t * 30;
-            jarWalls.push(Bodies.circle(rightX, leftY, 14, wallOptions));
-        }
-        
-        // Bottom reinforcement - flat floor
-        jarWalls.push(Bodies.rectangle(centerX, jarBottom + 5, jarRight - jarLeft - 40, wallThickness / 2, wallOptions));
-        
-    } else if (shape === 'heart') {
-        // Heart jar - use simple angled walls converging to a narrow bottom
-        
-        // Narrow bottom wall
-        jarWalls.push(Bodies.rectangle(centerX, jarBottom + wallThickness/2, 60, wallThickness, wallOptions));
-        
-        // Top wall (lid)
-        jarWalls.push(Bodies.rectangle(centerX, jarTop - wallThickness/2, 100, wallThickness, wallOptions));
-        
-        // Side walls - angled inward to create V shape
-        // These need to form a continuous wall from top to bottom
-        const heartHeight = jarBottom - jarTop;
-        const topWidth = jarRight - jarLeft;
-        const bottomWidth = 40;
-        
-        // Left angled wall - straight line from top-left to bottom-center
-        const leftAngle = Math.atan2(heartHeight, (topWidth / 2) - (bottomWidth / 2));
-        const wallLength = heartHeight / Math.cos(leftAngle) + 20;
-        
-        // Position walls along the angled path
-        for (let i = 0; i < 12; i++) {
-            const t = i / 11;
-            const leftX = jarLeft + t * ((topWidth / 2) - (bottomWidth / 2));
-            const leftY = jarTop + 20 + t * (heartHeight - 30);
-            jarWalls.push(Bodies.circle(leftX, leftY, 12, wallOptions));
-            
-            const rightX = jarRight - t * ((topWidth / 2) - (bottomWidth / 2));
-            jarWalls.push(Bodies.circle(rightX, leftY, 12, wallOptions));
-        }
-        
-        // Extra circles at the bottom V-point
-        for (let i = 0; i < 5; i++) {
-            const x = centerX - 20 + i * 10;
-            jarWalls.push(Bodies.circle(x, jarBottom - 5, 8, wallOptions));
-        }
-        
-    } else if (shape === 'tall') {
-        // Tall vase - narrower with curved bottom
-        
-        // Side walls
-        jarWalls.push(Bodies.rectangle(jarLeft - wallThickness/2, height / 2, wallThickness, height - 60, wallOptions));
-        jarWalls.push(Bodies.rectangle(jarRight + wallThickness/2, height / 2, wallThickness, height - 60, wallOptions));
-        
-        // Bottom wall
-        jarWalls.push(Bodies.rectangle(centerX, jarBottom + wallThickness/2, jarRight - jarLeft + 20, wallThickness, wallOptions));
-        
-        // Top wall (lid)
-        jarWalls.push(Bodies.rectangle(centerX, jarTop - wallThickness/2, jarRight - jarLeft + 30, wallThickness, wallOptions));
-        
-        // Angled corner slopes - steeper for tall jar
-        const tallSlopeLength = curveRadius * 2;
-        jarWalls.push(Bodies.rectangle(
-            jarLeft + curveRadius / 2 + 5,
-            jarBottom - curveRadius / 2,
-            tallSlopeLength,
-            wallThickness / 2,
-            { ...wallOptions, angle: Math.PI / 5 }
-        ));
-        jarWalls.push(Bodies.rectangle(
-            jarRight - curveRadius / 2 - 5,
-            jarBottom - curveRadius / 2,
-            tallSlopeLength,
-            wallThickness / 2,
-            { ...wallOptions, angle: -Math.PI / 5 }
-        ));
-        
-        // Curved corners
-        for (let i = 0; i < 8; i++) {
-            const angle = Math.PI / 2 + (Math.PI / 2) * (i / 7);
-            const x1 = jarLeft + curveRadius + Math.cos(angle) * curveRadius;
-            const y1 = jarBottom - curveRadius + Math.sin(angle) * curveRadius;
-            jarWalls.push(Bodies.circle(x1, y1, 6, wallOptions));
-            
-            const x2 = jarRight - curveRadius + Math.cos(Math.PI - angle) * curveRadius;
-            const y2 = jarBottom - curveRadius + Math.sin(Math.PI - angle) * curveRadius;
-            jarWalls.push(Bodies.circle(x2, y2, 6, wallOptions));
-        }
-        
-    } else if (shape === 'wide') {
-        // Wide basin - shallow with curved bottom
-        
-        // Side walls - extend from top to bottom
-        const wideWallHeight = jarBottom - jarTop + 20;
-        const wideWallY = jarTop + wideWallHeight / 2;
-        jarWalls.push(Bodies.rectangle(jarLeft - wallThickness/2, wideWallY, wallThickness, wideWallHeight, wallOptions));
-        jarWalls.push(Bodies.rectangle(jarRight + wallThickness/2, wideWallY, wallThickness, wideWallHeight, wallOptions));
-        
-        // Bottom wall
-        jarWalls.push(Bodies.rectangle(centerX, jarBottom + wallThickness/2, jarRight - jarLeft + 30, wallThickness, wallOptions));
-        
-        // Top wall (lid)
-        jarWalls.push(Bodies.rectangle(centerX, jarTop - wallThickness/2, jarRight - jarLeft + 40, wallThickness, wallOptions));
-        
-        // Angled corner slopes - gentler for wide basin
-        const wideSlopeLength = curveRadius * 2.5;
-        jarWalls.push(Bodies.rectangle(
-            jarLeft + curveRadius,
-            jarBottom - curveRadius / 2 + 5,
-            wideSlopeLength,
-            wallThickness / 2,
-            { ...wallOptions, angle: Math.PI / 7 }
-        ));
-        jarWalls.push(Bodies.rectangle(
-            jarRight - curveRadius,
-            jarBottom - curveRadius / 2 + 5,
-            wideSlopeLength,
-            wallThickness / 2,
-            { ...wallOptions, angle: -Math.PI / 7 }
-        ));
-        
-        // Curved corners (larger for wide basin)
-        for (let i = 0; i < 12; i++) {
-            const angle = Math.PI / 2 + (Math.PI / 2) * (i / 11);
-            const x1 = jarLeft + curveRadius + Math.cos(angle) * (curveRadius + 10);
-            const y1 = jarBottom - curveRadius + Math.sin(angle) * (curveRadius + 10);
-            jarWalls.push(Bodies.circle(x1, y1, 8, wallOptions));
-            
-            const x2 = jarRight - curveRadius + Math.cos(Math.PI - angle) * (curveRadius + 10);
-            const y2 = jarBottom - curveRadius + Math.sin(Math.PI - angle) * (curveRadius + 10);
-            jarWalls.push(Bodies.circle(x2, y2, 8, wallOptions));
-        }
-        
-    } else {
-        // Classic jar (default) - flat bottom, no corner shelves
-        const wallHeight = jarBottom - jarTop + 30;
-        const wallY = jarTop + wallHeight / 2 - 15;
-        jarWalls.push(Bodies.rectangle(jarLeft - wallThickness/2, wallY, wallThickness, wallHeight, wallOptions));
-        jarWalls.push(Bodies.rectangle(jarRight + wallThickness/2, wallY, wallThickness, wallHeight, wallOptions));
-        
-        jarWalls.push(Bodies.rectangle(centerX, jarBottom + wallThickness/2, jarRight - jarLeft + 40, wallThickness, wallOptions));
-        
-        jarWalls.push(Bodies.rectangle(centerX, jarTop - wallThickness/2, jarRight - jarLeft + 20, wallThickness, wallOptions));
-        
-        // Rounded corners are handled by logical clamping in checkMarbleBounds().
-    }
+    const sideHeight = jarBottom - g.shoulderY + 30;
+    const sideY = g.shoulderY + sideHeight / 2 - 15;
+    jarWalls.push(Bodies.rectangle(jarLeft - wallThickness / 2, sideY, wallThickness, sideHeight, wallOptions));
+    jarWalls.push(Bodies.rectangle(jarRight + wallThickness / 2, sideY, wallThickness, sideHeight, wallOptions));
+    jarWalls.push(Bodies.rectangle(centerX, jarBottom + wallThickness / 2, jarRight - jarLeft + 40, wallThickness, wallOptions));
+    const neck = getJarNeckBounds(width, height);
+    jarWalls.push(Bodies.rectangle(centerX, jarTop - wallThickness / 2, neck.right - neck.left + 16, wallThickness, wallOptions));
+    const neckHeight = Math.max(10, g.neckBottomY - g.neckTopY + 6);
+    const neckMidY = (g.neckTopY + g.neckBottomY) / 2;
+    jarWalls.push(Bodies.rectangle(g.neckLeftX - wallThickness / 4, neckMidY, wallThickness / 2, neckHeight, wallOptions));
+    jarWalls.push(Bodies.rectangle(g.neckRightX + wallThickness / 4, neckMidY, wallThickness / 2, neckHeight, wallOptions));
+    jarWalls.push(...buildShoulderSegmentWalls(g, wallOptions, wallThickness));
     
     Composite.add(engine.world, jarWalls);
     
@@ -971,7 +1017,8 @@ function checkMarbleBounds() {
     const height = container.offsetHeight;
     
     const bounds = getJarBoundaries(width, height);
-    const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius, shape } = bounds;
+    const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius } = bounds;
+    const neck = getJarNeckBounds(width, height);
     const centerX = width / 2;
     marbleBodies.forEach(marble => {
         const pos = marble.position;
@@ -1002,38 +1049,60 @@ function checkMarbleBounds() {
             corrected = true;
         }
 
-        // Clamp to rounded bottom-corner arcs so items cannot cross the visible outline.
-        if (shape === 'classic' || shape === 'tall' || shape === 'wide') {
-            const arcRadius = Math.max(8, curveRadius - radius - innerPad);
-
-            // Left bottom corner quarter-circle
-            if (correctedX < jarLeft + curveRadius && correctedY > jarBottom - curveRadius) {
-                const cx = jarLeft + curveRadius;
-                const cy = jarBottom - curveRadius;
-                const dx = correctedX - cx;
-                const dy = correctedY - cy;
-                const dist = Math.hypot(dx, dy);
-                if (dist > arcRadius) {
-                    const scale = arcRadius / Math.max(dist, 0.0001);
-                    correctedX = cx + dx * scale;
-                    correctedY = cy + dy * scale;
-                    corrected = true;
-                }
+        // Keep marbles inside a gradual neck taper near the top.
+        if (correctedY <= neck.shoulderBottom) {
+            const bodyHalf = (jarRight - jarLeft) / 2 - radius - innerPad;
+            const neckHalf = (neck.right - neck.left) / 2 - radius - innerPad;
+            const taperLinear = Math.max(
+                0,
+                Math.min(
+                    1,
+                    (correctedY - neck.shoulderTop) / Math.max(1, (neck.shoulderBottom - neck.shoulderTop))
+                )
+            );
+            const taperProgress = taperLinear * taperLinear * (3 - 2 * taperLinear);
+            const allowedHalfWidth = neckHalf + (bodyHalf - neckHalf) * taperProgress;
+            const minAllowedX = neck.centerX - allowedHalfWidth;
+            const maxAllowedX = neck.centerX + allowedHalfWidth;
+            if (correctedX < minAllowedX) {
+                correctedX = minAllowedX;
+                corrected = true;
+            } else if (correctedX > maxAllowedX) {
+                correctedX = maxAllowedX;
+                corrected = true;
             }
+        }
 
-            // Right bottom corner quarter-circle
-            if (correctedX > jarRight - curveRadius && correctedY > jarBottom - curveRadius) {
-                const cx = jarRight - curveRadius;
-                const cy = jarBottom - curveRadius;
-                const dx = correctedX - cx;
-                const dy = correctedY - cy;
-                const dist = Math.hypot(dx, dy);
-                if (dist > arcRadius) {
-                    const scale = arcRadius / Math.max(dist, 0.0001);
-                    correctedX = cx + dx * scale;
-                    correctedY = cy + dy * scale;
-                    corrected = true;
-                }
+        // Clamp to rounded bottom-corner arcs so items cannot cross the visible outline.
+        const arcRadius = Math.max(8, curveRadius - radius - innerPad);
+
+        // Left bottom corner quarter-circle
+        if (correctedX < jarLeft + curveRadius && correctedY > jarBottom - curveRadius) {
+            const cx = jarLeft + curveRadius;
+            const cy = jarBottom - curveRadius;
+            const dx = correctedX - cx;
+            const dy = correctedY - cy;
+            const dist = Math.hypot(dx, dy);
+            if (dist > arcRadius) {
+                const scale = arcRadius / Math.max(dist, 0.0001);
+                correctedX = cx + dx * scale;
+                correctedY = cy + dy * scale;
+                corrected = true;
+            }
+        }
+
+        // Right bottom corner quarter-circle
+        if (correctedX > jarRight - curveRadius && correctedY > jarBottom - curveRadius) {
+            const cx = jarRight - curveRadius;
+            const cy = jarBottom - curveRadius;
+            const dx = correctedX - cx;
+            const dy = correctedY - cy;
+            const dist = Math.hypot(dx, dy);
+            if (dist > arcRadius) {
+                const scale = arcRadius / Math.max(dist, 0.0001);
+                correctedX = cx + dx * scale;
+                correctedY = cy + dy * scale;
+                corrected = true;
             }
         }
 
@@ -1116,7 +1185,7 @@ function checkMarbleBounds() {
         
         if (needsReset) {
             // Respawn at random position inside jar
-            const newX = jarLeft + 20 + Math.random() * (jarRight - jarLeft - 40);
+            const newX = neck.left + 12 + Math.random() * Math.max(1, (neck.right - neck.left - 24));
             const newY = jarTop + 20 + Math.random() * 50;
             Body.setPosition(marble, { x: newX, y: newY });
             Body.setVelocity(marble, { x: 0, y: 0 });
@@ -1569,6 +1638,7 @@ function getRandomEnabledType() {
 // Add a collectible to the jar
 function addMarble(type, options = {}) {
     const { playSound = true } = options;
+    if (state.totalMarbles >= state.jarCapacity) return null;
     if (type == null) type = getRandomEnabledType();
     const container = document.getElementById('jarContainer');
     const width = container.offsetWidth;
@@ -1580,9 +1650,10 @@ function addMarble(type, options = {}) {
     const size = getMarbleSize();
     const radius = size / 2;
     const bounds = getJarBoundaries(width, height);
+    const neck = getJarNeckBounds(width, height);
     
     // Start position (drop from inside jar, below the lid)
-    const x = bounds.left + 20 + Math.random() * (bounds.right - bounds.left - 40);
+    const x = neck.left + 12 + Math.random() * Math.max(1, (neck.right - neck.left - 24));
     const y = bounds.top + 15;
     
     let renderOptions;
@@ -1719,11 +1790,16 @@ function restoreMarbles() {
     const width = container.offsetWidth;
     const height = container.offsetHeight;
     const bounds = getJarBoundaries(width, height);
+    const neck = getJarNeckBounds(width, height);
     const currentSize = getMarbleSize();
     
-    state.marbles.forEach((marbleData, index) => {
+    const marblesToRestore = state.marbles.slice(0, state.jarCapacity);
+    state.marbles = marblesToRestore;
+    state.totalMarbles = marblesToRestore.length;
+
+    marblesToRestore.forEach((marbleData, index) => {
         const timerId = setTimeout(() => {
-            const x = bounds.left + 20 + Math.random() * (bounds.right - bounds.left - 40);
+            const x = neck.left + 12 + Math.random() * Math.max(1, (neck.right - neck.left - 24));
             const y = bounds.top + 20 + (index * 2) % 60;
             
             const radius = currentSize / 2;
@@ -1796,7 +1872,6 @@ function getRestoreSignature() {
         Number(m.radius || 0).toFixed(2)
     ]);
     return JSON.stringify({
-        jarType: state.jarType,
         jarCapacity: state.jarCapacity,
         count: marbles.length,
         sample
@@ -1870,12 +1945,17 @@ function updateMarbleCount() {
     }
     positionZoomButtonByHintVisibility();
     const countInput = document.getElementById('settingsMarbleCountInput');
-    if (countInput) countInput.value = String(state.totalMarbles);
+    if (countInput) {
+        countInput.value = String(state.totalMarbles);
+        countInput.max = String(state.jarCapacity);
+    }
+    const capacityInput = document.getElementById('settingsCapacityInput');
+    if (capacityInput) capacityInput.value = String(state.jarCapacity);
 }
 
 function setMarbleCount(targetCount) {
     if (!Number.isFinite(targetCount)) return;
-    const clampedTarget = Math.max(0, Math.min(5000, Math.floor(targetCount)));
+    const clampedTarget = Math.max(0, Math.min(state.jarCapacity, Math.floor(targetCount)));
     const current = state.totalMarbles;
     if (clampedTarget === current) return;
 
@@ -1894,6 +1974,21 @@ function setMarbleCount(targetCount) {
         state.marbles.pop();
     }
     state.totalMarbles = state.marbles.length;
+    saveState();
+    updateMarbleCount();
+}
+
+function setJarCapacity(nextCapacity) {
+    const clamped = clampJarCapacity(nextCapacity);
+    if (clamped === state.jarCapacity) {
+        updateMarbleCount();
+        return;
+    }
+    state.jarCapacity = clamped;
+    if (state.totalMarbles > clamped) {
+        setMarbleCount(clamped);
+        return;
+    }
     saveState();
     updateMarbleCount();
 }
@@ -1979,34 +2074,18 @@ function getJarInspectImage(url) {
 }
 
 function traceJarInspectPath(ctx, bounds, width, height) {
-    const { left, right, top, bottom, curveRadius, shape } = bounds;
-    const centerX = width / 2;
-    if (shape === 'round') {
-        const rx = Math.max(30, (right - left) / 2);
-        const ry = Math.max(30, (bottom - top) / 2);
-        ctx.ellipse(centerX, top + ry, rx, ry, 0, 0, Math.PI * 2);
-        return;
-    }
-    if (shape === 'heart') {
-        const topY = top + 15;
-        const bottomY = bottom;
-        ctx.moveTo(centerX, bottomY);
-        ctx.bezierCurveTo(left, bottom - 50, left, top + 30, centerX, topY);
-        ctx.bezierCurveTo(right, top + 30, right, bottom - 50, centerX, bottomY);
-        return;
-    }
-
-    const topR = 10;
-    const bottomR = Math.max(14, Math.min(curveRadius, 48));
-    ctx.moveTo(left + topR, top);
-    ctx.lineTo(right - topR, top);
-    ctx.quadraticCurveTo(right, top, right, top + topR);
-    ctx.lineTo(right, bottom - bottomR);
-    ctx.quadraticCurveTo(right, bottom, right - bottomR, bottom);
-    ctx.lineTo(left + bottomR, bottom);
-    ctx.quadraticCurveTo(left, bottom, left, bottom - bottomR);
-    ctx.lineTo(left, top + topR);
-    ctx.quadraticCurveTo(left, top, left + topR, top);
+    const g = getJarGeometry(width, height);
+    ctx.moveTo(g.neckLeftX, g.neckTopY);
+    ctx.lineTo(g.neckLeftX, g.neckBottomY);
+    ctx.bezierCurveTo(g.leftShoulderC1X, g.leftShoulderC1Y, g.leftShoulderC2X, g.leftShoulderC2Y, g.shoulderLeftX, g.shoulderY);
+    ctx.bezierCurveTo(g.leftBodyC1X, g.leftBodyC1Y, g.leftBodyC2X, g.leftBodyC2Y, g.bodyLeftX, g.sideBottomY);
+    ctx.bezierCurveTo(g.leftLowerC1X, g.leftLowerC1Y, g.leftLowerC2X, g.leftLowerC2Y, g.bottomLeftX, g.bottomCurveY);
+    ctx.lineTo(g.bottomRightX, g.bottomCurveY);
+    ctx.bezierCurveTo(g.rightLowerC2X, g.rightLowerC2Y, g.rightLowerC1X, g.rightLowerC1Y, g.bodyRightX, g.sideBottomY);
+    ctx.bezierCurveTo(g.rightBodyC2X, g.rightBodyC2Y, g.rightBodyC1X, g.rightBodyC1Y, g.shoulderRightX, g.shoulderY);
+    ctx.bezierCurveTo(g.rightShoulderC1X, g.rightShoulderC1Y, g.rightShoulderC2X, g.rightShoulderC2Y, g.neckRightX, g.neckBottomY);
+    ctx.lineTo(g.neckRightX, g.neckTopY);
+    ctx.closePath();
 }
 
 function renderJarInspectFrame() {
@@ -2178,7 +2257,9 @@ function undoLastMarble() {
 function setupEventListeners() {
     // Settings button - open settings page
     document.getElementById('settingsBtn')?.addEventListener('click', openSettings);
-    document.getElementById('settingsBackBtn')?.addEventListener('click', closeSettings);
+    document.getElementById('settingsPage')?.addEventListener('click', (e) => {
+        if (e.target?.id === 'settingsPage') closeSettings();
+    });
     document.getElementById('settingsResetBtn')?.addEventListener('click', () => {
         if (confirm('Empty your jar? This clears current jar contents but keeps your collection history.')) {
             clearAllMarbles();
@@ -2197,6 +2278,10 @@ function setupEventListeners() {
     });
     const applyCountBtn = document.getElementById('settingsApplyCountBtn');
     const countInput = document.getElementById('settingsMarbleCountInput');
+    const capacityInput = document.getElementById('settingsCapacityInput');
+    const applyCapacityBtn = document.getElementById('settingsApplyCapacityBtn');
+    const capacityDownBtn = document.getElementById('settingsCapacityDownBtn');
+    const capacityUpBtn = document.getElementById('settingsCapacityUpBtn');
     applyCountBtn?.addEventListener('click', () => {
         const value = Number(countInput?.value);
         setMarbleCount(value);
@@ -2207,6 +2292,39 @@ function setupEventListeners() {
             const value = Number(countInput.value);
             setMarbleCount(value);
         }
+    });
+    applyCapacityBtn?.addEventListener('click', () => {
+        const value = Number(capacityInput?.value);
+        setJarCapacity(value);
+    });
+    capacityInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const value = Number(capacityInput.value);
+            setJarCapacity(value);
+        }
+    });
+    capacityDownBtn?.addEventListener('click', () => {
+        setJarCapacity(state.jarCapacity - 1);
+    });
+    capacityUpBtn?.addEventListener('click', () => {
+        setJarCapacity(state.jarCapacity + 1);
+    });
+    const shapeMouthInput = document.getElementById('jarShapeMouthInput');
+    const shapeNeckInput = document.getElementById('jarShapeNeckInput');
+    const shapeShoulderInput = document.getElementById('jarShapeShoulderInput');
+    const shapeBodyInput = document.getElementById('jarShapeBodyInput');
+    const bindShapeInput = (el, key) => {
+        el?.addEventListener('input', () => {
+            updateJarShapeTuner({ [key]: Number(el.value) });
+        });
+    };
+    bindShapeInput(shapeMouthInput, 'mouthWidth');
+    bindShapeInput(shapeNeckInput, 'neckHeight');
+    bindShapeInput(shapeShoulderInput, 'shoulderRoundness');
+    bindShapeInput(shapeBodyInput, 'bodyWidth');
+    document.getElementById('jarShapeResetBtn')?.addEventListener('click', () => {
+        updateJarShapeTuner({ ...JAR_SHAPE_TUNER_DEFAULTS });
     });
     document.getElementById('undoMarbleBtn')?.addEventListener('click', undoLastMarble);
     document.getElementById('zoomJarBtn')?.addEventListener('click', toggleJarZoom);
@@ -2286,6 +2404,9 @@ function setupEventListeners() {
         if (e.key === 'Escape' && isJarZoomed) {
             setJarZoom(false);
         }
+        if (e.key === 'Escape' && document.getElementById('settingsPage')?.classList.contains('active')) {
+            closeSettings();
+        }
     });
 }
 
@@ -2293,14 +2414,19 @@ function setupEventListeners() {
 function openSettings() {
     setFrontMenuOpen(false);
     document.getElementById('settingsPage').classList.add('active');
+    document.body.classList.add('settings-open');
     document.body.style.overflow = 'hidden';
     const countInput = document.getElementById('settingsMarbleCountInput');
     if (countInput) countInput.value = String(state.totalMarbles);
+    const capacityInput = document.getElementById('settingsCapacityInput');
+    if (capacityInput) capacityInput.value = String(state.jarCapacity);
+    renderJarShapeTunerControls();
 }
 
 // Close settings page
 function closeSettings() {
     document.getElementById('settingsPage').classList.remove('active');
+    document.body.classList.remove('settings-open');
     document.body.style.overflow = '';
 }
 

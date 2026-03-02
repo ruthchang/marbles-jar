@@ -27,9 +27,13 @@
                 <div class="jar-container jar-classic" id="jarContainer">
                     <canvas id="jarCanvas"></canvas>
                     <div class="jar-overlay">
-                        <div class="jar-glass"></div>
+                        <svg class="jar-fill-full" viewBox="0 0 304 390" preserveAspectRatio="none" aria-hidden="true">
+                            <path d="M88 40 L88 78 L52 124 L44 132 L44 330 Q44 370 84 370 L220 370 Q260 370 260 330 L260 132 L252 124 L216 78 L216 40 Z"></path>
+                        </svg>
+                        <svg class="jar-outline-full" viewBox="0 0 304 390" preserveAspectRatio="none" aria-hidden="true">
+                            <path d="M88 40 L88 78 L52 124 L44 132 L44 330 Q44 370 84 370 L220 370 Q260 370 260 330 L260 132 L252 124 L216 78 L216 40"></path>
+                        </svg>
                         <div class="jar-lid"></div>
-                        <div class="jar-shine"></div>
                     </div>
                     <div class="shake-hint" id="shakeHint">
                         <span class="shake-hint-text"><img class="shake-hint-icon" src="https://cdn-icons-png.flaticon.com/128/456/456291.png" alt=""> Drag</span>
@@ -51,17 +55,14 @@
         <div class="menu-backdrop" id="menuBackdrop" aria-hidden="true"></div>
         <div class="front-menu" id="frontMenu">
             <a href="collection.html" class="menu-link" id="menuCollectionLink">View Collection</a>
-            <button type="button" class="menu-link settings-menu-btn" id="settingsBtn" title="Settings"><img class="settings-btn-icon" src="https://cdn-icons-png.flaticon.com/128/1790/1790071.png" alt=""> Settings</button>
+            <button type="button" class="menu-link settings-menu-btn" id="settingsBtn" title="Settings">Settings</button>
             <button type="button" class="sync-badge sync-unknown" id="syncBadge">Sync: Checking...</button>
         </div>
 
         <!-- Settings Page -->
         <div class="settings-page" id="settingsPage">
-            <div class="settings-header">
-                <button class="settings-back-btn" id="settingsBackBtn">← Back</button>
-                <h2>Settings</h2>
-            </div>
             <div class="settings-content">
+                <h2 class="settings-title">Settings</h2>
                 <div class="settings-group">
                     <h3>Choose Your Collectible</h3>
                     <div class="collectible-bulk-actions">
@@ -77,6 +78,37 @@
                     <h3>Collision Sounds</h3>
                     <div class="sound-theme-picker" id="soundThemePicker">
                         <!-- Sound themes will be dynamically rendered -->
+                    </div>
+                </div>
+
+                <div class="settings-group" id="jarShapeGroup">
+                    <h3>Jar Shape Tuner</h3>
+                    <div class="jar-shape-tuner">
+                        <label class="jar-shape-row" for="jarShapeMouthInput">
+                            <span>Mouth width</span>
+                            <span class="jar-shape-value" id="jarShapeMouthValue"></span>
+                        </label>
+                        <input type="range" id="jarShapeMouthInput" min="36" max="66" step="0.1">
+
+                        <label class="jar-shape-row" for="jarShapeNeckInput">
+                            <span>Neck height</span>
+                            <span class="jar-shape-value" id="jarShapeNeckValue"></span>
+                        </label>
+                        <input type="range" id="jarShapeNeckInput" min="0" max="8" step="0.1">
+
+                        <label class="jar-shape-row" for="jarShapeShoulderInput">
+                            <span>Shoulder roundness</span>
+                            <span class="jar-shape-value" id="jarShapeShoulderValue"></span>
+                        </label>
+                        <input type="range" id="jarShapeShoulderInput" min="0" max="100" step="1">
+
+                        <label class="jar-shape-row" for="jarShapeBodyInput">
+                            <span>Body width</span>
+                            <span class="jar-shape-value" id="jarShapeBodyValue"></span>
+                        </label>
+                        <input type="range" id="jarShapeBodyInput" min="58" max="82" step="0.1">
+
+                        <button type="button" class="settings-inline-btn secondary jar-shape-reset-btn" id="jarShapeResetBtn">Reset Jar Shape</button>
                     </div>
                 </div>
 
@@ -99,9 +131,18 @@
                 <div class="settings-group">
                     <h3>Data</h3>
                     <div class="settings-inline-row">
+                        <label for="settingsCapacityInput" class="settings-inline-label">Jar capacity</label>
+                        <div class="settings-inline-controls settings-capacity-controls">
+                            <button type="button" class="settings-inline-btn secondary" id="settingsCapacityDownBtn" aria-label="Decrease jar capacity">-</button>
+                            <input type="number" id="settingsCapacityInput" min="10" max="500" step="1" value="100">
+                            <button type="button" class="settings-inline-btn secondary" id="settingsCapacityUpBtn" aria-label="Increase jar capacity">+</button>
+                            <button type="button" class="settings-inline-btn" id="settingsApplyCapacityBtn">Apply</button>
+                        </div>
+                    </div>
+                    <div class="settings-inline-row">
                         <label for="settingsMarbleCountInput" class="settings-inline-label">Set marbles in jar</label>
                         <div class="settings-inline-controls">
-                            <input type="number" id="settingsMarbleCountInput" min="0" max="5000" step="1" value="0">
+                            <input type="number" id="settingsMarbleCountInput" min="0" max="100" step="1" value="0">
                             <button type="button" class="settings-inline-btn" id="settingsApplyCountBtn">Apply</button>
                         </div>
                     </div>

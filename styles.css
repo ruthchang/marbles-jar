@@ -182,8 +182,13 @@ header h1 {
 
 .jar-container {
     position: relative;
-    width: 280px;
-    height: 350px;
+    width: 336px;
+    height: 432px;
+    --jar-outline-width: 4px;
+    --jar-outline-color: rgba(255, 255, 255, 0.6);
+    --lid-width: 42%;
+    --lid-before-extra: 6px;
+    --lid-highlight-width: 76%;
     cursor: grab;
     user-select: none;
     touch-action: none;
@@ -212,31 +217,37 @@ header h1 {
     z-index: 2;
 }
 
-.jar-glass {
+.jar-outline-full {
     position: absolute;
-    top: 45px;
-    left: 30px;
-    right: 30px;
-    bottom: 20px;
-    border: 4px solid rgba(255, 255, 255, 0.6);
-    border-radius: 0 0 40px 40px;
-    background: linear-gradient(
-        90deg,
-        rgba(255, 255, 255, 0.1) 0%,
-        rgba(255, 255, 255, 0.05) 50%,
-        rgba(255, 255, 255, 0.1) 100%
-    );
-    box-shadow: 
-        inset 0 0 30px rgba(255, 255, 255, 0.2),
-        0 5px 20px rgba(0, 0, 0, 0.1);
+    inset: 0;
+    z-index: 8;
+}
+
+.jar-fill-full {
+    position: absolute;
+    inset: 0;
+    z-index: 7;
+}
+
+.jar-fill-full path {
+    fill: rgba(255, 255, 255, 0.08);
+}
+
+.jar-outline-full path {
+    fill: none;
+    stroke: var(--jar-outline-color);
+    stroke-width: var(--jar-outline-width);
+    vector-effect: non-scaling-stroke;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .jar-lid {
     position: absolute;
-    top: 30px;
+    top: 18px;
     left: 50%;
     transform: translateX(-50%);
-    width: 232px;
+    width: var(--lid-width);
     height: 22px;
     background: 
         repeating-linear-gradient(90deg, 
@@ -260,7 +271,7 @@ header h1 {
     bottom: -14px;
     left: 50%;
     transform: translateX(-50%);
-    width: 238px;
+    width: calc(100% + var(--lid-before-extra));
     height: 16px;
     background: 
         repeating-linear-gradient(90deg, 
@@ -282,7 +293,7 @@ header h1 {
     top: 3px;
     left: 50%;
     transform: translateX(-50%);
-    width: 180px;
+    width: 76%;
     height: 6px;
     background: linear-gradient(90deg, 
         transparent 0%, 
@@ -291,22 +302,6 @@ header h1 {
         transparent 100%
     );
     border-radius: 3px;
-}
-
-.jar-shine {
-    position: absolute;
-    top: 60px;
-    left: 45px;
-    width: 15px;
-    height: 80px;
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.6) 0%,
-        rgba(255, 255, 255, 0.2) 50%,
-        transparent 100%
-    );
-    border-radius: 10px;
-    transform: rotate(-5deg);
 }
 
 .shake-hint {
@@ -348,19 +343,26 @@ header h1 {
     margin-right: 4px;
 }
 
-.shake-hint-text {
+.shake-hint-text,
+.zoom-jar-btn {
     display: inline-flex;
     align-items: center;
     padding: 1px 0;
+    margin: 0;
+    border: none;
     border-bottom: 1px dashed rgba(26, 163, 157, 0.55);
+    border-radius: 0;
+    background: transparent;
     color: rgba(15, 111, 106, 0.92);
+    font-family: inherit;
     font-size: 0.76rem;
     font-weight: 700;
     line-height: 1.2;
+    vertical-align: middle;
 }
 
 .jar-stats {
-    margin-top: 35px;
+    margin-top: 22px;
     font-size: 1.2rem;
     font-weight: 600;
     color: var(--text-secondary);
@@ -429,17 +431,9 @@ header h1 {
 
 .zoom-jar-btn {
     height: auto;
-    padding: 1px 0;
-    border: none;
-    border-bottom: 1px dashed rgba(26, 163, 157, 0.55);
-    border-radius: 0;
-    background: transparent;
-    color: rgba(15, 111, 106, 0.92);
-    font-family: inherit;
-    font-size: 0.76rem;
-    font-weight: 700;
+    -webkit-appearance: none;
+    appearance: none;
     cursor: pointer;
-    line-height: 1.2;
     transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
 }
 
@@ -467,42 +461,30 @@ header h1 {
     min-height: 32px;
 }
 
-.zoom-hint-slot .zoom-jar-btn {
-    height: auto;
-    padding: 0;
-    font-size: 0.72rem;
-    opacity: 0.82;
-}
-
-.zoom-center-row .zoom-jar-btn {
-    height: auto;
-    padding: 2px 0;
-    font-size: 0.78rem;
-    opacity: 0.88;
-}
-
 .menu-toggle-btn {
-    height: 30px;
-    padding: 0 12px;
-    border: 1px solid rgba(0, 0, 0, 0.16);
+    height: 28px;
+    padding: 0 11px;
+    border: 1px solid rgba(49, 64, 63, 0.2);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.78);
-    color: #53605f;
+    background: rgba(255, 255, 255, 0.55);
+    color: rgba(49, 64, 63, 0.82);
     font-family: inherit;
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: 0.74rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: transform 0.15s ease, background 0.15s ease;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    backdrop-filter: blur(2px);
 }
 
 .menu-toggle-btn:hover {
-    transform: translateY(-1px);
-    background: rgba(255, 255, 255, 0.95);
+    transform: translateY(-1px) scale(1.01);
+    background: rgba(255, 255, 255, 0.72);
+    border-color: rgba(49, 64, 63, 0.3);
 }
 
 .menu-toggle-btn[aria-expanded="true"] {
-    background: rgba(26, 163, 157, 0.16);
-    border-color: rgba(26, 163, 157, 0.45);
+    background: rgba(26, 163, 157, 0.14);
+    border-color: rgba(26, 163, 157, 0.35);
     color: #0f6f6a;
 }
 
@@ -510,7 +492,13 @@ header h1 {
     margin-top: 10px;
     display: flex;
     justify-content: center;
-    z-index: 1700;
+    z-index: 120;
+}
+
+body.settings-open .menu-dock,
+body.settings-open .front-menu,
+body.settings-open .menu-backdrop {
+    display: none !important;
 }
 
 .menu-backdrop {
@@ -1347,45 +1335,10 @@ header h1 {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    /* Scale jar lids with container width so they fit in mobile/PWA viewports */
-    .jar-container.jar-classic .jar-lid {
-        width: 83%;
-    }
-
-    .jar-container.jar-classic .jar-lid::before {
-        width: calc(100% + 6px);
-    }
-
-    .jar-container.jar-round .jar-lid {
-        width: 41%;
-    }
-
-    .jar-container.jar-round .jar-lid::before {
-        width: calc(100% + 2px);
-    }
-
-    .jar-container.jar-tall .jar-lid {
-        width: 59%;
-    }
-
-    .jar-container.jar-tall .jar-lid::before {
-        width: calc(100% + 5px);
-    }
-
-    .jar-container.jar-wide .jar-lid {
-        width: 96%;
-    }
-
-    .jar-container.jar-wide .jar-lid::before {
-        width: calc(100% + 6px);
-    }
-
-    .jar-container.jar-heart .jar-lid {
-        width: 36%;
-    }
-
-    .jar-container.jar-heart .jar-lid::before {
-        width: calc(100% + 6px);
+    .jar-container {
+        --lid-width: 44%;
+        --lid-before-extra: 6px;
+        --lid-highlight-width: 76%;
     }
 }
 
@@ -1399,8 +1352,11 @@ header h1 {
     }
     
     .jar-container {
-        width: 240px;
-        height: 300px;
+        width: 286px;
+        height: 370px;
+        --lid-width: 45%;
+        --lid-before-extra: 5px;
+        --lid-highlight-width: 75%;
     }
     
     .collectible-option {
@@ -1437,41 +1393,6 @@ header h1 {
     font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 10px;
-}
-
-.jar-type-picker {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-}
-
-.jar-option {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 10px 6px;
-    aspect-ratio: 1;
-    background: #f8f9fa;
-    border: 2px solid transparent;
-    border-radius: 12px;
-    font-family: inherit;
-    font-size: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-align: center;
-}
-
-.jar-option:hover {
-    border-color: var(--accent);
-    background: #fff;
-}
-
-.jar-option.active {
-    background: linear-gradient(135deg, rgba(26, 163, 157, 0.1) 0%, rgba(15, 127, 122, 0.1) 100%);
-    border-color: var(--accent);
-    color: var(--accent-hover);
 }
 
 /* Sound Theme Picker */
@@ -1583,56 +1504,36 @@ header h1 {
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(180deg, #dff7f4 0%, #c9efea 50%, #b8e8e1 100%);
-    z-index: 1000;
+    background: rgba(23, 34, 33, 0.35);
+    z-index: 2200;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    align-items: flex-start;
+    justify-content: center;
 }
 
 .settings-page.active {
-    display: block;
-}
-
-.settings-header {
-    position: sticky;
-    top: 0;
-    background: #dff7f4;
-    padding: 16px 20px;
     display: flex;
-    align-items: center;
-    gap: 16px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-    z-index: 10;
-}
-
-.settings-header h2 {
-    font-size: 1.2rem;
-    font-weight: 700;
-    margin: 0;
-    flex: 1;
-}
-
-.settings-back-btn {
-    background: none;
-    border: none;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--accent);
-    cursor: pointer;
-    padding: 8px 12px;
-    margin: -8px -12px;
-    border-radius: 8px;
-    font-family: inherit;
-}
-
-.settings-back-btn:hover {
-    background: rgba(26, 163, 157, 0.12);
 }
 
 .settings-content {
-    padding: 20px;
+    width: min(560px, 100%);
+    max-height: calc(100vh - 28px);
+    overflow-y: auto;
+    padding: 18px;
     max-width: 500px;
     margin: 0 auto;
+    background: linear-gradient(180deg, #dff7f4 0%, #c9efea 55%, #b8e8e1 100%);
+    border-radius: 18px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.22);
+}
+
+.settings-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 4px 6px 14px;
+    color: #2f3f3e;
 }
 
 .settings-group {
@@ -1653,7 +1554,6 @@ header h1 {
 }
 
 .settings-group .collectible-picker,
-.settings-group .jar-type-picker,
 .settings-group .sound-theme-picker {
     grid-template-columns: repeat(4, 1fr);
 }
@@ -1661,6 +1561,36 @@ header h1 {
 /* Let sound tiles reflow naturally in tight mobile/PWA widths */
 .settings-group .sound-theme-picker {
     grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+}
+
+.jar-shape-tuner {
+    display: grid;
+    gap: 10px;
+}
+
+.jar-shape-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #4f6664;
+}
+
+.jar-shape-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.82rem;
+    color: #0f6f6a;
+}
+
+#jarShapeGroup input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+}
+
+.jar-shape-reset-btn {
+    margin-top: 4px;
+    width: fit-content;
 }
 
 /* Sync section */
@@ -1839,7 +1769,8 @@ header h1 {
     gap: 8px;
 }
 
-#settingsMarbleCountInput {
+#settingsMarbleCountInput,
+#settingsCapacityInput {
     flex: 1;
     min-width: 0;
     padding: 10px 12px;
@@ -1850,9 +1781,15 @@ header h1 {
     font-weight: 600;
 }
 
-#settingsMarbleCountInput:focus {
+#settingsMarbleCountInput:focus,
+#settingsCapacityInput:focus {
     outline: none;
     border-color: var(--accent);
+}
+
+.settings-capacity-controls #settingsCapacityInput {
+    text-align: center;
+    flex: 0 0 86px;
 }
 
 .settings-inline-btn {
@@ -1871,176 +1808,11 @@ header h1 {
     opacity: 0.92;
 }
 
-/* Jar Shape Variations */
-/* Classic Jar - Traditional mason jar with screw-top lid */
-.jar-container.jar-classic .jar-glass {
-    border-radius: 8px 8px 40px 40px;
+.settings-inline-btn.secondary {
+    background: #e8f4f3;
+    color: #0f6f6a;
 }
 
-.jar-container.jar-classic .jar-lid {
-    top: 30px;
-    width: 232px;
-}
-
-.jar-container.jar-classic .jar-lid::before {
-    width: 238px;
-}
-
-/* Round Bowl - With neck opening at top for lid to sit flush */
-.jar-container.jar-round .jar-glass {
-    border-radius: 50%;
-    width: 82%;
-    height: 62%;
-    left: 9%;
-    top: 35%;
-}
-
-/* Neck opening that connects to the lid */
-.jar-container.jar-round .jar-glass::before {
-    content: '';
-    position: absolute;
-    top: -32px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 42%;
-    height: 36px;
-    background: inherit;
-    border-radius: 4px 4px 0 0;
-    border: inherit;
-    border-bottom: none;
-    box-shadow: 
-        inset 3px 0 8px rgba(255, 255, 255, 0.3),
-        inset -2px 0 5px rgba(0, 0, 0, 0.05);
-}
-
-.jar-container.jar-round .jar-lid {
-    width: 115px;
-    height: 20px;
-    top: 45px;
-}
-
-.jar-container.jar-round .jar-lid::before {
-    width: 117px;
-    height: 12px;
-    bottom: -10px;
-}
-
-.jar-container.jar-round .jar-lid::after {
-    width: 80px;
-}
-
-.jar-container.jar-round .jar-shine {
-    left: 20%;
-    top: 45%;
-    width: 12px;
-    height: 50px;
-}
-
-/* Tall Vase - Narrower lid for narrow opening */
-.jar-container.jar-tall .jar-glass {
-    width: 55%;
-    left: 22.5%;
-    top: 50px;
-    border-radius: 8px 8px 25px 25px;
-}
-
-.jar-container.jar-tall .jar-lid {
-    width: 165px;
-    height: 18px;
-    top: 32px;
-}
-
-.jar-container.jar-tall .jar-lid::before {
-    width: 170px;
-    height: 12px;
-}
-
-.jar-container.jar-tall .jar-lid::after {
-    width: 120px;
-}
-
-.jar-container.jar-tall .jar-shine {
-    left: 28%;
-    top: 60px;
-}
-
-/* Wide Basin - Wide lid for wide opening */
-.jar-container.jar-wide .jar-glass {
-    width: 95%;
-    height: 50%;
-    left: 2.5%;
-    top: 50%;
-    border-radius: 20px 20px 80px 80px;
-}
-
-.jar-container.jar-wide .jar-lid {
-    width: 270px;
-    height: 20px;
-    top: 32px;
-}
-
-.jar-container.jar-wide .jar-lid::before {
-    width: 276px;
-    height: 14px;
-}
-
-.jar-container.jar-wide .jar-lid::after {
-    width: 210px;
-}
-
-.jar-container.jar-wide .jar-shine {
-    left: 12%;
-    top: 55%;
-    height: 30px;
-}
-
-/* Heart Jar - Smaller cute lid */
-.jar-container.jar-heart .jar-glass {
-    width: 85%;
-    height: 72%;
-    left: 7.5%;
-    top: 25%;
-    border-radius: 50% 50% 10% 50%;
-    transform: rotate(-45deg);
-}
-
-.jar-container.jar-heart .jar-lid {
-    width: 100px;
-    height: 16px;
-    top: 14px;
-}
-
-.jar-container.jar-heart .jar-lid::before {
-    width: 106px;
-    height: 10px;
-}
-
-.jar-container.jar-heart .jar-lid::after {
-    width: 70px;
-}
-
-.jar-container.jar-heart .jar-shine {
-    left: 22%;
-    top: 38%;
-    transform: rotate(-45deg);
-    height: 40px;
-}
-
-/* Keep lid proportions correct on small mobile/PWA screens.
-   This block is intentionally at file end so it overrides shape defaults above. */
-@media (max-width: 500px) {
-    .jar-container.jar-classic .jar-lid { width: 83%; }
-    .jar-container.jar-classic .jar-lid::before { width: calc(100% + 6px); }
-
-    .jar-container.jar-round .jar-lid { width: 41%; }
-    .jar-container.jar-round .jar-lid::before { width: calc(100% + 2px); }
-
-    .jar-container.jar-tall .jar-lid { width: 59%; }
-    .jar-container.jar-tall .jar-lid::before { width: calc(100% + 5px); }
-
-    .jar-container.jar-wide .jar-lid { width: 96%; }
-    .jar-container.jar-wide .jar-lid::before { width: calc(100% + 6px); }
-
-    .jar-container.jar-heart .jar-lid { width: 36%; }
-    .jar-container.jar-heart .jar-lid::before { width: calc(100% + 6px); }
+.settings-capacity-controls .settings-inline-btn {
+    min-width: 40px;
 }
