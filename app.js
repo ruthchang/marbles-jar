@@ -119,36 +119,27 @@ let jarInspectTransform = null;
 const jarInspectScale = 3.1;
 const jarInspectImageCache = {};
 let zoomHintObserver = null;
+let jarEdgeLookupCache = null;
 
 const SETTLE_LINEAR_SPEED = 0.05;
 const SETTLE_ANGULAR_SPEED = 0.015;
 const SETTLE_FRAMES = 12;
 
 const JAR_SHAPE = {
-    neckLeft: 0.345,
-    neckRight: 0.655,
-    neckTop: 0.108,
-    neckBottom: 0.246,
-    shoulderLeft: 0.255,
-    shoulderRight: 0.745,
-    shoulderY: 0.39,
-    bodyLeft: 0.225,
-    bodyRight: 0.775,
-    sideBottomY: 0.84,
-    bottomLeft: 0.34,
-    bottomRight: 0.66,
-    bottomCurveY: 0.95
+    neckLeft: 0.25,
+    neckRight: 0.75,
+    neckTop: 0.098,
+    neckBottom: 0.102,
+    shoulderLeft: 0.139024,
+    shoulderRight: 0.860976,
+    shoulderY: 0.30836,
+    bodyLeft: 0.139024,
+    bodyRight: 0.860976,
+    sideBottomY: 0.865,
+    bottomLeft: 0.232878,
+    bottomRight: 0.767122,
+    bottomCurveY: 0.962
 };
-
-const JAR_SHAPE_TUNER_STORAGE_KEY = 'marbleJarShapeTunerV2';
-const JAR_SHAPE_TUNER_DEFAULTS = {
-    mouthWidth: 50,
-    neckHeight: 1.2,
-    shoulderRoundness: 86,
-    bodyWidth: 74
-};
-let jarShapeTuner = { ...JAR_SHAPE_TUNER_DEFAULTS };
-let jarShapeRebuildTimer = null;
 
 // Image cache for sprites
 const imageCache = {};
@@ -283,117 +274,10 @@ function onSyncAuthChange(signedIn, user) {
     }
 }
 
-function clampNumber(value, min, max, fallback) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(min, Math.min(max, n));
-}
-
-function normalizeJarShapeTuner(candidate = {}) {
-    return {
-        mouthWidth: clampNumber(candidate.mouthWidth, 36, 66, JAR_SHAPE_TUNER_DEFAULTS.mouthWidth),
-        neckHeight: clampNumber(candidate.neckHeight, 0, 8, JAR_SHAPE_TUNER_DEFAULTS.neckHeight),
-        shoulderRoundness: clampNumber(candidate.shoulderRoundness, 0, 100, JAR_SHAPE_TUNER_DEFAULTS.shoulderRoundness),
-        bodyWidth: clampNumber(candidate.bodyWidth, 58, 82, JAR_SHAPE_TUNER_DEFAULTS.bodyWidth)
-    };
-}
-
-function deriveJarShapeFromTuner(tuner) {
-    const normalized = normalizeJarShapeTuner(tuner);
-    const mouthHalf = normalized.mouthWidth / 200;
-    const roundness = normalized.shoulderRoundness / 100;
-    const neckTop = 0.098;
-    const neckBottom = Math.min(0.18, neckTop + normalized.neckHeight / 300);
-    const bodyHalf = normalized.bodyWidth / 205;
-    const shoulderBlend = 1;
-    const shoulderHalf = bodyHalf * shoulderBlend;
-    const bottomHalf = bodyHalf * 0.74;
-    const shoulderY = 0.305 + (1 - roundness) * 0.024;
-    return {
-        neckLeft: 0.5 - mouthHalf,
-        neckRight: 0.5 + mouthHalf,
-        neckTop,
-        neckBottom,
-        shoulderLeft: 0.5 - shoulderHalf,
-        shoulderRight: 0.5 + shoulderHalf,
-        shoulderY,
-        bodyLeft: 0.5 - bodyHalf,
-        bodyRight: 0.5 + bodyHalf,
-        sideBottomY: 0.865,
-        bottomLeft: 0.5 - bottomHalf,
-        bottomRight: 0.5 + bottomHalf,
-        bottomCurveY: 0.962
-    };
-}
-
-function applyJarShapeFromTuner() {
-    Object.assign(JAR_SHAPE, deriveJarShapeFromTuner(jarShapeTuner));
-}
-
-function saveJarShapeTuner() {
-    localStorage.setItem(JAR_SHAPE_TUNER_STORAGE_KEY, JSON.stringify(jarShapeTuner));
-}
-
-function renderJarShapeTunerControls() {
-    const mouthInput = document.getElementById('jarShapeMouthInput');
-    const neckInput = document.getElementById('jarShapeNeckInput');
-    const shoulderInput = document.getElementById('jarShapeShoulderInput');
-    const bodyInput = document.getElementById('jarShapeBodyInput');
-    if (!mouthInput || !neckInput || !shoulderInput || !bodyInput) return;
-
-    mouthInput.value = String(jarShapeTuner.mouthWidth);
-    neckInput.value = String(jarShapeTuner.neckHeight);
-    shoulderInput.value = String(jarShapeTuner.shoulderRoundness);
-    bodyInput.value = String(jarShapeTuner.bodyWidth);
-
-    const mouthValue = document.getElementById('jarShapeMouthValue');
-    const neckValue = document.getElementById('jarShapeNeckValue');
-    const shoulderValue = document.getElementById('jarShapeShoulderValue');
-    const bodyValue = document.getElementById('jarShapeBodyValue');
-    if (mouthValue) mouthValue.textContent = `${jarShapeTuner.mouthWidth.toFixed(1)}%`;
-    if (neckValue) neckValue.textContent = `${jarShapeTuner.neckHeight.toFixed(1)}%`;
-    if (shoulderValue) shoulderValue.textContent = `${Math.round(jarShapeTuner.shoulderRoundness)}%`;
-    if (bodyValue) bodyValue.textContent = `${jarShapeTuner.bodyWidth.toFixed(1)}%`;
-}
-
-function scheduleJarShapeRebuild() {
-    if (jarShapeRebuildTimer) clearTimeout(jarShapeRebuildTimer);
-    jarShapeRebuildTimer = setTimeout(() => {
-        jarShapeRebuildTimer = null;
-        if (!engine) return;
-        rebuildPhysics();
-    }, 90);
-}
-
-function updateJarShapeTuner(nextValues, options = {}) {
-    const { save = true, rebuild = true } = options;
-    jarShapeTuner = normalizeJarShapeTuner({ ...jarShapeTuner, ...nextValues });
-    applyJarShapeFromTuner();
-    renderJarShapeTunerControls();
-    updateJarSvgPaths();
-    if (rebuild) scheduleJarShapeRebuild();
-    if (save) saveJarShapeTuner();
-}
-
-function loadJarShapeTuner() {
-    let parsed = null;
-    const saved = localStorage.getItem(JAR_SHAPE_TUNER_STORAGE_KEY);
-    if (saved) {
-        try {
-            parsed = JSON.parse(saved);
-        } catch (e) {
-            console.warn('Failed to parse jar shape tuner settings', e);
-        }
-    }
-    jarShapeTuner = normalizeJarShapeTuner({ ...JAR_SHAPE_TUNER_DEFAULTS, ...(parsed || {}) });
-    applyJarShapeFromTuner();
-}
-
 // Initialize the app
 async function init() {
     preloadImages();
     loadState();
-    loadJarShapeTuner();
     if (typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
         Sync.init();
         const session = await Sync.getSession();
@@ -409,7 +293,6 @@ async function init() {
     updateJarSvgPaths();
     setupPhysics();
     setupEventListeners();
-    renderJarShapeTunerControls();
     setJarZoom(false);
     renderCollectibles();
     renderSoundSettings();
@@ -443,7 +326,7 @@ function applyJarType() {
 function getJarGeometry(width, height) {
     const px = (v) => width * v;
     const py = (v) => height * v;
-    const roundness = jarShapeTuner.shoulderRoundness / 100;
+    const roundness = 0.86;
     const shoulderDelta = Math.max(0.03, JAR_SHAPE.shoulderY - JAR_SHAPE.neckBottom);
     const shoulderC1Y = JAR_SHAPE.neckBottom + shoulderDelta * (0.26 + 0.18 * roundness);
     const shoulderC2Y = JAR_SHAPE.neckBottom + shoulderDelta * (0.68 + 0.26 * roundness);
@@ -505,6 +388,91 @@ function getCubicPoint(p0, p1, p2, p3, t) {
     };
 }
 
+function interpolateXAtY(samples, y) {
+    if (!samples || samples.length === 0) return 0;
+    if (y <= samples[0].y) return samples[0].x;
+    const last = samples[samples.length - 1];
+    if (y >= last.y) return last.x;
+    for (let i = 1; i < samples.length; i += 1) {
+        const a = samples[i - 1];
+        const b = samples[i];
+        if (y > b.y) continue;
+        const dy = b.y - a.y;
+        if (Math.abs(dy) < 0.0001) return Math.min(a.x, b.x);
+        const t = (y - a.y) / dy;
+        return a.x + (b.x - a.x) * t;
+    }
+    return last.x;
+}
+
+function getJarEdgeLookup(width, height) {
+    if (
+        jarEdgeLookupCache &&
+        Math.abs(jarEdgeLookupCache.width - width) < 0.1 &&
+        Math.abs(jarEdgeLookupCache.height - height) < 0.1
+    ) {
+        return jarEdgeLookupCache;
+    }
+
+    const g = getJarGeometry(width, height);
+    const steps = 36;
+    const left = [{ x: g.neckLeftX, y: g.neckTopY }, { x: g.neckLeftX, y: g.neckBottomY }];
+    const right = [{ x: g.neckRightX, y: g.neckTopY }, { x: g.neckRightX, y: g.neckBottomY }];
+    const sampleCubic = (p0, p1, p2, p3, out) => {
+        for (let i = 1; i <= steps; i += 1) {
+            out.push(getCubicPoint(p0, p1, p2, p3, i / steps));
+        }
+    };
+
+    sampleCubic(
+        { x: g.neckLeftX, y: g.neckBottomY },
+        { x: g.leftShoulderC1X, y: g.leftShoulderC1Y },
+        { x: g.leftShoulderC2X, y: g.leftShoulderC2Y },
+        { x: g.shoulderLeftX, y: g.shoulderY },
+        left
+    );
+    sampleCubic(
+        { x: g.shoulderLeftX, y: g.shoulderY },
+        { x: g.leftBodyC1X, y: g.leftBodyC1Y },
+        { x: g.leftBodyC2X, y: g.leftBodyC2Y },
+        { x: g.bodyLeftX, y: g.sideBottomY },
+        left
+    );
+    sampleCubic(
+        { x: g.bodyLeftX, y: g.sideBottomY },
+        { x: g.leftLowerC1X, y: g.leftLowerC1Y },
+        { x: g.leftLowerC2X, y: g.leftLowerC2Y },
+        { x: g.bottomLeftX, y: g.bottomCurveY },
+        left
+    );
+    sampleCubic(
+        { x: g.neckRightX, y: g.neckBottomY },
+        { x: g.rightShoulderC2X, y: g.rightShoulderC2Y },
+        { x: g.rightShoulderC1X, y: g.rightShoulderC1Y },
+        { x: g.shoulderRightX, y: g.shoulderY },
+        right
+    );
+    sampleCubic(
+        { x: g.shoulderRightX, y: g.shoulderY },
+        { x: g.rightBodyC1X, y: g.rightBodyC1Y },
+        { x: g.rightBodyC2X, y: g.rightBodyC2Y },
+        { x: g.bodyRightX, y: g.sideBottomY },
+        right
+    );
+    sampleCubic(
+        { x: g.bodyRightX, y: g.sideBottomY },
+        { x: g.rightLowerC1X, y: g.rightLowerC1Y },
+        { x: g.rightLowerC2X, y: g.rightLowerC2Y },
+        { x: g.bottomRightX, y: g.bottomCurveY },
+        right
+    );
+
+    left.sort((a, b) => a.y - b.y);
+    right.sort((a, b) => a.y - b.y);
+    jarEdgeLookupCache = { width, height, left, right };
+    return jarEdgeLookupCache;
+}
+
 function buildShoulderSegmentWalls(g, wallOptions, wallThickness) {
     const segments = [];
     const sideThickness = wallThickness / 2.1;
@@ -563,6 +531,21 @@ function buildJarPathData(width, height, closed = false) {
     return d.join(' ');
 }
 
+function traceJarCanvasPath(ctx, width, height) {
+    const g = getJarGeometry(width, height);
+    ctx.moveTo(g.neckLeftX, g.neckTopY);
+    ctx.lineTo(g.neckLeftX, g.neckBottomY);
+    ctx.bezierCurveTo(g.leftShoulderC1X, g.leftShoulderC1Y, g.leftShoulderC2X, g.leftShoulderC2Y, g.shoulderLeftX, g.shoulderY);
+    ctx.bezierCurveTo(g.leftBodyC1X, g.leftBodyC1Y, g.leftBodyC2X, g.leftBodyC2Y, g.bodyLeftX, g.sideBottomY);
+    ctx.bezierCurveTo(g.leftLowerC1X, g.leftLowerC1Y, g.leftLowerC2X, g.leftLowerC2Y, g.bottomLeftX, g.bottomCurveY);
+    ctx.lineTo(g.bottomRightX, g.bottomCurveY);
+    ctx.bezierCurveTo(g.rightLowerC2X, g.rightLowerC2Y, g.rightLowerC1X, g.rightLowerC1Y, g.bodyRightX, g.sideBottomY);
+    ctx.bezierCurveTo(g.rightBodyC2X, g.rightBodyC2Y, g.rightBodyC1X, g.rightBodyC1Y, g.shoulderRightX, g.shoulderY);
+    ctx.bezierCurveTo(g.rightShoulderC1X, g.rightShoulderC1Y, g.rightShoulderC2X, g.rightShoulderC2Y, g.neckRightX, g.neckBottomY);
+    ctx.lineTo(g.neckRightX, g.neckTopY);
+    ctx.closePath();
+}
+
 function updateJarSvgPaths() {
     const container = document.getElementById('jarContainer');
     if (!container) return;
@@ -578,7 +561,8 @@ function updateJarSvgPaths() {
     if (outlineSvg) outlineSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     if (fillPath) fillPath.setAttribute('d', fillD);
     if (outlinePath) outlinePath.setAttribute('d', outlineD);
-    const lidWidth = clampNumber(jarShapeTuner.mouthWidth + 8, 38, 72, 56);
+    const mouthWidthPct = (JAR_SHAPE.neckRight - JAR_SHAPE.neckLeft) * 100;
+    const lidWidth = Math.max(38, Math.min(72, mouthWidthPct + 8));
     container.style.setProperty('--lid-width', `${lidWidth}%`);
 }
 
@@ -985,6 +969,21 @@ function setupPhysics() {
     
     // Check for escaped marbles every frame
     Events.on(engine, 'afterUpdate', checkMarbleBounds);
+    // Hard-clip rendered content to the jar interior so nothing can be visible outside the outline.
+    Events.on(render, 'afterRender', () => {
+        if (!render?.context) return;
+        const containerEl = document.getElementById('jarContainer');
+        const clipW = containerEl?.offsetWidth || width;
+        const clipH = containerEl?.offsetHeight || height;
+        const ctx = render.context;
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.beginPath();
+        traceJarCanvasPath(ctx, clipW, clipH);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.restore();
+    });
     
     // Start the engine and renderer
     runner = Runner.create();
@@ -1019,13 +1018,12 @@ function checkMarbleBounds() {
     const bounds = getJarBoundaries(width, height);
     const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius } = bounds;
     const neck = getJarNeckBounds(width, height);
+    const edgeLookup = getJarEdgeLookup(width, height);
     const centerX = width / 2;
     marbleBodies.forEach(marble => {
         const pos = marble.position;
         const radius = marble.circleRadius || getMarbleSize() / 2;
         const innerPad = 2;
-        const minX = jarLeft + radius + innerPad;
-        const maxX = jarRight - radius - innerPad;
         const minY = jarTop + radius + innerPad;
         const maxY = jarBottom - radius - innerPad;
         let needsReset = false;
@@ -1033,7 +1031,10 @@ function checkMarbleBounds() {
         let correctedY = pos.y;
         let corrected = false;
 
-        // Keep each collectible fully inside the jar rectangle.
+        const leftAtY = interpolateXAtY(edgeLookup.left, correctedY);
+        const rightAtY = interpolateXAtY(edgeLookup.right, correctedY);
+        const minX = leftAtY + radius + innerPad;
+        const maxX = rightAtY - radius - innerPad;
         if (correctedX < minX) {
             correctedX = minX;
             corrected = true;
@@ -1049,28 +1050,17 @@ function checkMarbleBounds() {
             corrected = true;
         }
 
-        // Keep marbles inside a gradual neck taper near the top.
-        if (correctedY <= neck.shoulderBottom) {
-            const bodyHalf = (jarRight - jarLeft) / 2 - radius - innerPad;
-            const neckHalf = (neck.right - neck.left) / 2 - radius - innerPad;
-            const taperLinear = Math.max(
-                0,
-                Math.min(
-                    1,
-                    (correctedY - neck.shoulderTop) / Math.max(1, (neck.shoulderBottom - neck.shoulderTop))
-                )
-            );
-            const taperProgress = taperLinear * taperLinear * (3 - 2 * taperLinear);
-            const allowedHalfWidth = neckHalf + (bodyHalf - neckHalf) * taperProgress;
-            const minAllowedX = neck.centerX - allowedHalfWidth;
-            const maxAllowedX = neck.centerX + allowedHalfWidth;
-            if (correctedX < minAllowedX) {
-                correctedX = minAllowedX;
-                corrected = true;
-            } else if (correctedX > maxAllowedX) {
-                correctedX = maxAllowedX;
-                corrected = true;
-            }
+        // Recompute side bounds after Y clamp using actual jar edge profile.
+        const leftAtClampedY = interpolateXAtY(edgeLookup.left, correctedY);
+        const rightAtClampedY = interpolateXAtY(edgeLookup.right, correctedY);
+        const minAllowedX = leftAtClampedY + radius + innerPad;
+        const maxAllowedX = rightAtClampedY - radius - innerPad;
+        if (correctedX < minAllowedX) {
+            correctedX = minAllowedX;
+            corrected = true;
+        } else if (correctedX > maxAllowedX) {
+            correctedX = maxAllowedX;
+            corrected = true;
         }
 
         // Clamp to rounded bottom-corner arcs so items cannot cross the visible outline.
@@ -1139,7 +1129,7 @@ function checkMarbleBounds() {
 
         const nearFloorLine = correctedY >= maxY - 6;
         const nearBottomRegion = correctedY >= jarBottom - Math.max(90, curveRadius + 35);
-        const isNearSideWall = correctedX <= minX + 2 || correctedX >= maxX - 2;
+        const isNearSideWall = correctedX <= minAllowedX + 2 || correctedX >= maxAllowedX - 2;
         const hasSupportBelow = marbleBodies.some((other) => {
             if (other === marble) return false;
             const verticalGap = other.position.y - correctedY;
@@ -2073,19 +2063,8 @@ function getJarInspectImage(url) {
     return null;
 }
 
-function traceJarInspectPath(ctx, bounds, width, height) {
-    const g = getJarGeometry(width, height);
-    ctx.moveTo(g.neckLeftX, g.neckTopY);
-    ctx.lineTo(g.neckLeftX, g.neckBottomY);
-    ctx.bezierCurveTo(g.leftShoulderC1X, g.leftShoulderC1Y, g.leftShoulderC2X, g.leftShoulderC2Y, g.shoulderLeftX, g.shoulderY);
-    ctx.bezierCurveTo(g.leftBodyC1X, g.leftBodyC1Y, g.leftBodyC2X, g.leftBodyC2Y, g.bodyLeftX, g.sideBottomY);
-    ctx.bezierCurveTo(g.leftLowerC1X, g.leftLowerC1Y, g.leftLowerC2X, g.leftLowerC2Y, g.bottomLeftX, g.bottomCurveY);
-    ctx.lineTo(g.bottomRightX, g.bottomCurveY);
-    ctx.bezierCurveTo(g.rightLowerC2X, g.rightLowerC2Y, g.rightLowerC1X, g.rightLowerC1Y, g.bodyRightX, g.sideBottomY);
-    ctx.bezierCurveTo(g.rightBodyC2X, g.rightBodyC2Y, g.rightBodyC1X, g.rightBodyC1Y, g.shoulderRightX, g.shoulderY);
-    ctx.bezierCurveTo(g.rightShoulderC1X, g.rightShoulderC1Y, g.rightShoulderC2X, g.rightShoulderC2Y, g.neckRightX, g.neckBottomY);
-    ctx.lineTo(g.neckRightX, g.neckTopY);
-    ctx.closePath();
+function traceJarInspectPath(ctx, width, height) {
+    traceJarCanvasPath(ctx, width, height);
 }
 
 function renderJarInspectFrame() {
@@ -2129,14 +2108,12 @@ function renderJarInspectFrame() {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    const bounds = getJarBoundaries(sourceW, sourceH);
-
     // Draw high-res collectibles inside jar clipping path.
     ctx.save();
     ctx.translate(drawX, drawY);
     ctx.scale(totalScale, totalScale);
     ctx.beginPath();
-    traceJarInspectPath(ctx, bounds, sourceW, sourceH);
+    traceJarInspectPath(ctx, sourceW, sourceH);
     ctx.clip();
 
     const sortedBodies = [...marbleBodies].sort((a, b) => a.position.y - b.position.y);
@@ -2181,7 +2158,7 @@ function renderJarInspectFrame() {
     ctx.translate(drawX, drawY);
     ctx.scale(totalScale, totalScale);
     ctx.beginPath();
-    traceJarInspectPath(ctx, bounds, sourceW, sourceH);
+    traceJarInspectPath(ctx, sourceW, sourceH);
     ctx.lineWidth = 3 / totalScale;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
     ctx.stroke();
@@ -2310,22 +2287,6 @@ function setupEventListeners() {
     capacityUpBtn?.addEventListener('click', () => {
         setJarCapacity(state.jarCapacity + 1);
     });
-    const shapeMouthInput = document.getElementById('jarShapeMouthInput');
-    const shapeNeckInput = document.getElementById('jarShapeNeckInput');
-    const shapeShoulderInput = document.getElementById('jarShapeShoulderInput');
-    const shapeBodyInput = document.getElementById('jarShapeBodyInput');
-    const bindShapeInput = (el, key) => {
-        el?.addEventListener('input', () => {
-            updateJarShapeTuner({ [key]: Number(el.value) });
-        });
-    };
-    bindShapeInput(shapeMouthInput, 'mouthWidth');
-    bindShapeInput(shapeNeckInput, 'neckHeight');
-    bindShapeInput(shapeShoulderInput, 'shoulderRoundness');
-    bindShapeInput(shapeBodyInput, 'bodyWidth');
-    document.getElementById('jarShapeResetBtn')?.addEventListener('click', () => {
-        updateJarShapeTuner({ ...JAR_SHAPE_TUNER_DEFAULTS });
-    });
     document.getElementById('undoMarbleBtn')?.addEventListener('click', undoLastMarble);
     document.getElementById('zoomJarBtn')?.addEventListener('click', toggleJarZoom);
     document.getElementById('menuToggleBtn')?.addEventListener('click', toggleFrontMenu);
@@ -2420,7 +2381,6 @@ function openSettings() {
     if (countInput) countInput.value = String(state.totalMarbles);
     const capacityInput = document.getElementById('settingsCapacityInput');
     if (capacityInput) capacityInput.value = String(state.jarCapacity);
-    renderJarShapeTunerControls();
 }
 
 // Close settings page

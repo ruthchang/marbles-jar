@@ -1563,36 +1563,6 @@ body.settings-open .menu-backdrop {
     grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
 }
 
-.jar-shape-tuner {
-    display: grid;
-    gap: 10px;
-}
-
-.jar-shape-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: #4f6664;
-}
-
-.jar-shape-value {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.82rem;
-    color: #0f6f6a;
-}
-
-#jarShapeGroup input[type="range"] {
-    width: 100%;
-    accent-color: var(--accent);
-}
-
-.jar-shape-reset-btn {
-    margin-top: 4px;
-    width: fit-content;
-}
-
 /* Sync section */
 #syncGroup {
     padding: 18px;
