@@ -1267,8 +1267,18 @@ function setupShakeInteraction() {
     const dragThreshold = 12;
     let lastX = 0, lastY = 0;
     let velocityX = 0, velocityY = 0;
+    let activePointerKind = null;
+    let ignoreMouseUntil = 0;
+
+    function getEventKind(e) {
+        return e.type && e.type.startsWith('touch') ? 'touch' : 'mouse';
+    }
     
     function startDrag(e) {
+        const kind = getEventKind(e);
+        if (kind === 'mouse' && Date.now() < ignoreMouseUntil) return;
+        if (kind === 'touch') ignoreMouseUntil = Date.now() + 700;
+        activePointerKind = kind;
         isDragging = true;
         hasMoved = false;
         dragStartTime = Date.now();
@@ -1280,6 +1290,7 @@ function setupShakeInteraction() {
     
     function moveDrag(e) {
         if (!isDragging) return;
+        if (getEventKind(e) !== activePointerKind) return;
         const pos = getEventPosition(e);
         const dx = pos.x - lastX;
         const dy = pos.y - lastY;
@@ -1305,8 +1316,9 @@ function setupShakeInteraction() {
         lastY = pos.y;
     }
     
-    function endDrag() {
+    function endDrag(e) {
         if (!isDragging) return;
+        if (e && getEventKind(e) !== activePointerKind) return;
         const wasTap = !hasMoved && (Date.now() - dragStartTime) < tapMaxDuration;
         if (wasTap) {
             const rect = container.getBoundingClientRect();
@@ -1317,6 +1329,7 @@ function setupShakeInteraction() {
             }
         }
         isDragging = false;
+        activePointerKind = null;
     }
     
     function getEventPosition(e) {
@@ -2234,9 +2247,7 @@ function undoLastMarble() {
 function setupEventListeners() {
     // Settings button - open settings page
     document.getElementById('settingsBtn')?.addEventListener('click', openSettings);
-    document.getElementById('settingsPage')?.addEventListener('click', (e) => {
-        if (e.target?.id === 'settingsPage') closeSettings();
-    });
+    document.getElementById('settingsCloseBtn')?.addEventListener('click', closeSettings);
     document.getElementById('settingsResetBtn')?.addEventListener('click', () => {
         if (confirm('Empty your jar? This clears current jar contents but keeps your collection history.')) {
             clearAllMarbles();
