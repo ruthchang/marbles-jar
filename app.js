@@ -596,12 +596,21 @@ function resizeExistingMarbles() {
     const newRadius = newSize / 2;
     
     marbleBodies.forEach((marble, index) => {
-        const scale = newRadius / marble.circleRadius;
+        const previousRadius = marble.circleRadius || newRadius;
+        const scale = newRadius / previousRadius;
         Body.scale(marble, scale, scale);
         
         if (marble.render.sprite) {
-            marble.render.sprite.xScale = (newRadius * 2) / 128;
-            marble.render.sprite.yScale = (newRadius * 2) / 128;
+            const config = collectibles[marble.marbleType];
+            if (config?.isMarble && marble.marbleColor) {
+                const refreshedTextureSize = getMarbleTextureResolution(newRadius * 2);
+                marble.render.sprite.texture = createMarbleTexture(marble.marbleColor, refreshedTextureSize);
+                marble._spriteBaseSize = refreshedTextureSize;
+            }
+            const baseSize = marble._spriteBaseSize || 128;
+            const visualScale = (newRadius * 2) / baseSize;
+            marble.render.sprite.xScale = visualScale;
+            marble.render.sprite.yScale = visualScale;
         }
     });
     
@@ -1265,10 +1274,12 @@ function setupShakeInteraction() {
     const tapMaxDuration = 280;
     const lidTapHeight = 72;
     const dragThreshold = 12;
+    const lidTapCooldownMs = 260;
     let lastX = 0, lastY = 0;
     let velocityX = 0, velocityY = 0;
     let activePointerKind = null;
     let ignoreMouseUntil = 0;
+    let lastLidTapAt = 0;
 
     function getEventKind(e) {
         return e.type && e.type.startsWith('touch') ? 'touch' : 'mouse';
@@ -1324,6 +1335,13 @@ function setupShakeInteraction() {
             const rect = container.getBoundingClientRect();
             const tapY = dragStartPos.y - rect.top;
             if (tapY >= 0 && tapY <= lidTapHeight) {
+                const now = Date.now();
+                if (now - lastLidTapAt < lidTapCooldownMs) {
+                    isDragging = false;
+                    activePointerKind = null;
+                    return;
+                }
+                lastLidTapAt = now;
                 addMarble();
                 shakeHint.classList.add('hidden');
             }
@@ -1638,6 +1656,11 @@ function getRandomEnabledType() {
     return enabled[Math.floor(Math.random() * enabled.length)];
 }
 
+function getMarbleTextureResolution(displayDiameter) {
+    const dpr = window.devicePixelRatio || 1;
+    return Math.max(64, Math.round(displayDiameter * dpr * 1.6));
+}
+
 // Add a collectible to the jar
 function addMarble(type, options = {}) {
     const { playSound = true } = options;
@@ -1669,12 +1692,13 @@ function addMarble(type, options = {}) {
         const colorIndex = Math.floor(Math.random() * config.fallbackColors.length);
         fallbackColor = config.fallbackColors[colorIndex];
         itemName = config.itemNames?.[colorIndex] || '';
-        const textureUrl = createMarbleTexture(fallbackColor, radius * 2);
+        const textureSize = getMarbleTextureResolution(radius * 2);
+        const textureUrl = createMarbleTexture(fallbackColor, textureSize);
         renderOptions = {
             sprite: {
                 texture: textureUrl,
-                xScale: 1,
-                yScale: 1
+                xScale: (radius * 2) / textureSize,
+                yScale: (radius * 2) / textureSize
             }
         };
         imageUrl = textureUrl;
@@ -1705,6 +1729,9 @@ function addMarble(type, options = {}) {
     marble.marbleImage = imageUrl;
     marble.marbleColor = fallbackColor;
     marble.itemName = itemName;
+    marble._spriteBaseSize = config.isMarble
+        ? getMarbleTextureResolution(radius * 2)
+        : 128;
     
     Composite.add(engine.world, marble);
     marbleBodies.push(marble);
@@ -1812,12 +1839,13 @@ function restoreMarbles() {
             
             // Check if this is a marble type (rendered with gradients)
             if (config && config.isMarble) {
-                const textureUrl = createMarbleTexture(marbleData.fallbackColor, radius * 2);
+                const textureSize = getMarbleTextureResolution(radius * 2);
+                const textureUrl = createMarbleTexture(marbleData.fallbackColor, textureSize);
                 renderOptions = {
                     sprite: {
                         texture: textureUrl,
-                        xScale: 1,
-                        yScale: 1
+                        xScale: (radius * 2) / textureSize,
+                        yScale: (radius * 2) / textureSize
                     }
                 };
             } else {
@@ -1851,6 +1879,9 @@ function restoreMarbles() {
             marble.marbleType = marbleData.type;
             marble.marbleImage = marbleData.imageUrl;
             marble.marbleColor = marbleData.fallbackColor;
+            marble._spriteBaseSize = (config && config.isMarble)
+                ? getMarbleTextureResolution(radius * 2)
+                : 128;
             let itemName = marbleData.itemName;
             if (!itemName && config) {
                 const idx = config.images?.indexOf(marbleData.imageUrl);
