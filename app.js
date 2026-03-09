@@ -17,13 +17,6 @@ let state = {
 
 // Sound themes
 const soundThemes = {
-    default: {
-        name: 'Default',
-        icon: 'https://cdn-icons-png.flaticon.com/128/1378/1378177.png',
-        description: 'Soft chime based on collectible',
-        type: 'collectible',
-        waveform: 'sine'
-    },
     glass: {
         name: 'Glass Marbles',
         icon: 'https://cdn-icons-png.flaticon.com/128/6835/6835786.png',
@@ -31,6 +24,13 @@ const soundThemes = {
         frequencies: { min: 2000, max: 4000 },
         waveform: 'sine',
         duration: 0.08
+    },
+    default: {
+        name: 'Plinks',
+        icon: 'https://cdn-icons-png.flaticon.com/128/1378/1378177.png',
+        description: 'Soft chime based on collectible',
+        type: 'collectible',
+        waveform: 'sine'
     },
     wooden: {
         name: 'Wooden Beads',
@@ -265,8 +265,7 @@ function enforcePlanRestrictions() {
             };
         });
         state.collectibleType = FREE_COLLECTIBLE_TYPE;
-        state.enabledCollectibles = (state.enabledCollectibles || [])
-            .filter((type) => type === FREE_COLLECTIBLE_TYPE);
+        state.enabledCollectibles = [FREE_COLLECTIBLE_TYPE];
         state.totalMarbles = state.marbles.length;
     }
     if (isSoundThemesLocked()) {
@@ -1027,8 +1026,10 @@ function recordCollectedHistory(type, itemName, fallbackColor, imageUrl) {
 function renderCollectibles() {
     const picker = document.getElementById('collectiblePicker');
     if (!picker) return;
+    const disableCollectibleSelection = isCollectiblesLocked();
     picker.innerHTML = Object.entries(collectibles).map(([key, config]) => {
-        const isLocked = isCollectiblesLocked() && key !== FREE_COLLECTIBLE_TYPE;
+        const isPremiumLocked = disableCollectibleSelection && key !== FREE_COLLECTIBLE_TYPE;
+        const isSelectionDisabled = disableCollectibleSelection;
         const label = config.name.split(/\s+/).slice(1).join(' ') || config.name;
         const enabled = state.enabledCollectibles.includes(key);
         let icon;
@@ -1039,8 +1040,8 @@ function renderCollectibles() {
         } else {
             icon = `<span class="collectible-option-icon marble-icon" style="background: ${config.fallbackColors?.[0] || '#999'}"></span>`;
         }
-        return `<label class="collectible-option ${state.collectibleType === key ? 'active' : ''} ${enabled ? 'enabled' : ''} ${isLocked ? 'premium-locked' : ''}" data-type="${key}">
-            <input type="checkbox" class="collectible-option-checkbox" ${enabled ? 'checked' : ''} ${isLocked ? 'disabled' : ''}>
+        return `<label class="collectible-option ${state.collectibleType === key ? 'active' : ''} ${enabled ? 'enabled' : ''} ${isPremiumLocked ? 'premium-locked' : ''} ${disableCollectibleSelection ? 'free-locked' : ''}" data-type="${key}">
+            <input type="checkbox" class="collectible-option-checkbox" ${enabled ? 'checked' : ''} ${isSelectionDisabled ? 'disabled' : ''}>
             <span class="collectible-option-content">${icon}<span class="collectible-option-label">${label}</span></span>
         </label>`;
     }).join('');
@@ -1048,7 +1049,7 @@ function renderCollectibles() {
     picker.querySelectorAll('.collectible-option-checkbox').forEach(cb => {
         cb.addEventListener('change', (e) => {
             const option = cb.closest('.collectible-option');
-            if (option?.classList.contains('premium-locked')) {
+            if (option?.classList.contains('premium-locked') || option?.classList.contains('free-locked')) {
                 cb.checked = false;
                 return;
             }
@@ -1068,7 +1069,7 @@ function renderCollectibles() {
         span.addEventListener('click', (e) => {
             e.preventDefault();
             const option = span.closest('.collectible-option');
-            if (option?.classList.contains('premium-locked')) return;
+            if (option?.classList.contains('premium-locked') || option?.classList.contains('free-locked')) return;
             const checkbox = option.querySelector('.collectible-option-checkbox');
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
@@ -1084,7 +1085,7 @@ function renderCollectibles() {
 
 function setAllCollectiblesEnabled(enabled) {
     if (isCollectiblesLocked()) {
-        state.enabledCollectibles = enabled ? [FREE_COLLECTIBLE_TYPE] : [];
+        state.enabledCollectibles = [FREE_COLLECTIBLE_TYPE];
         state.collectibleType = FREE_COLLECTIBLE_TYPE;
         saveState();
         renderCollectibles();
@@ -2802,6 +2803,18 @@ function setupEventListeners() {
     document.getElementById('deselectAllCollectiblesBtn')?.addEventListener('click', () => {
         setAllCollectiblesEnabled(false);
     });
+    if (isCollectiblesLocked()) {
+        const selectAllBtn = document.getElementById('selectAllCollectiblesBtn');
+        const deselectAllBtn = document.getElementById('deselectAllCollectiblesBtn');
+        if (selectAllBtn) {
+            selectAllBtn.disabled = true;
+            selectAllBtn.title = 'Premium required to change collectible selection.';
+        }
+        if (deselectAllBtn) {
+            deselectAllBtn.disabled = true;
+            deselectAllBtn.title = 'Premium required to change collectible selection.';
+        }
+    }
     document.getElementById('settingsClearCollectiblesBtn')?.addEventListener('click', async () => {
         const confirmed = await showConfirmDialog(
             'Warning: all items that have been tracked as collected will be cleared. Current items in the jar will stay.\n\nThis cannot be undone.',

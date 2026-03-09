@@ -1038,6 +1038,13 @@ body.jar-only-mode .menu-backdrop {
     background: #8aa2a0;
 }
 
+.collectible-bulk-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    filter: grayscale(1);
+}
+
 .collectible-option {
     display: flex;
     flex-direction: column;
@@ -1140,6 +1147,24 @@ body.jar-only-mode .menu-backdrop {
     background: rgba(45, 52, 54, 0.85);
     padding: 2px 4px;
     border-radius: 6px;
+}
+
+.collectible-option.free-locked {
+    opacity: 0.55;
+    filter: grayscale(0.8);
+    cursor: not-allowed;
+}
+
+.collectible-option.free-locked:hover {
+    transform: none;
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+.collectible-option.free-locked .collectible-option-checkbox {
+    accent-color: #b8c0c4;
+    opacity: 0.7;
+    filter: grayscale(1);
+    cursor: not-allowed;
 }
 
 /* Modal */
