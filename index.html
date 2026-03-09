@@ -83,6 +83,15 @@
                     </div>
                 </div>
 
+                <div class="settings-group" id="premiumGroup">
+                    <h3>Premium</h3>
+                    <p class="premium-status" id="premiumStatus">Unlock premium for $1.00</p>
+                    <div class="premium-actions">
+                        <button type="button" class="premium-btn" id="premiumBuyBtn">Unlock Premium ($1.00)</button>
+                        <button type="button" class="premium-btn secondary" id="premiumRestoreBtn">Restore Purchases</button>
+                    </div>
+                </div>
+
                 <div class="settings-group" id="syncGroup">
                     <h3>Sync Across Devices</h3>
                     <div id="syncStatus">
@@ -117,8 +126,8 @@
                             <button type="button" class="settings-inline-btn" id="settingsApplyCountBtn">Apply</button>
                         </div>
                     </div>
-                    <button class="danger-btn subtle" id="settingsClearCollectiblesBtn"><img class="btn-icon" src="https://cdn-icons-png.flaticon.com/128/1669/1669005.png" alt=""> Clear Items Collected So Far</button>
-                    <button class="danger-btn" id="settingsResetBtn"><img class="btn-icon" src="https://cdn-icons-png.flaticon.com/128/1890/1890119.png" alt=""> Empty Jar</button>
+                    <button class="danger-btn subtle" id="settingsClearCollectiblesBtn">Clear Items Collected So Far</button>
+                    <button class="danger-btn" id="settingsResetBtn">Empty Jar</button>
                 </div>
             </div>
         </div>
@@ -141,6 +150,17 @@
                     <canvas id="jarInspectCanvas"></canvas>
                 </div>
                 <p class="jar-inspect-hint">Drag to pan</p>
+            </div>
+        </div>
+
+        <div class="confirm-overlay" id="confirmOverlay" aria-hidden="true">
+            <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+                <h3 id="confirmTitle">Please Confirm</h3>
+                <p id="confirmMessage"></p>
+                <div class="confirm-actions">
+                    <button type="button" class="confirm-btn secondary" id="confirmCancelBtn">Cancel</button>
+                    <button type="button" class="confirm-btn primary" id="confirmConfirmBtn">Confirm</button>
+                </div>
             </div>
         </div>
 

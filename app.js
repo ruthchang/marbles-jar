@@ -12,7 +12,7 @@ let state = {
     enabledCollectibles: [], // Populated on init; which types can appear when randomly adding
     totalMarbles: 0,
     jarCapacity: DEFAULT_JAR_CAPACITY,
-    soundTheme: 'default'
+    soundTheme: 'glass'
 };
 
 // Sound themes
@@ -92,6 +92,187 @@ const soundThemes = {
 };
 
 const JAR_CLASS = 'jar-classic';
+const IS_PREMIUM_BUILD = false;
+const FREE_COLLECTIBLE_TYPE = 'marble';
+const FREE_SOUND_THEME = 'glass';
+const PREMIUM_PRODUCT_ID = 'com.marblejar.premium_unlock';
+const PREMIUM_PRICE_LABEL = '$1.00';
+const PREMIUM_STORAGE_KEY = 'marbleJarPremiumUnlocked';
+
+let isPremiumUnlocked = IS_PREMIUM_BUILD;
+
+function isPremiumMode() {
+    return IS_PREMIUM_BUILD || isPremiumUnlocked;
+}
+
+function isCollectiblesLocked() {
+    return !isPremiumMode();
+}
+
+function isSoundThemesLocked() {
+    return !isPremiumMode();
+}
+
+function isSyncEnabled() {
+    return isPremiumMode();
+}
+
+function getPremiumIapBridge() {
+    if (window.Capacitor?.Plugins?.PremiumIAP) return window.Capacitor.Plugins.PremiumIAP;
+    if (window.PremiumIAP) return window.PremiumIAP;
+    return null;
+}
+
+function setPremiumUnlocked(nextValue) {
+    isPremiumUnlocked = !!nextValue;
+    try {
+        localStorage.setItem(PREMIUM_STORAGE_KEY, isPremiumUnlocked ? 'true' : 'false');
+    } catch (e) {
+        console.warn('Failed to persist premium entitlement:', e);
+    }
+}
+
+async function refreshPremiumEntitlement() {
+    let localPremium = false;
+    try {
+        localPremium = localStorage.getItem(PREMIUM_STORAGE_KEY) === 'true';
+    } catch (e) {
+        console.warn('Failed to read stored premium entitlement:', e);
+    }
+
+    let bridgePremium = false;
+    const bridge = getPremiumIapBridge();
+    if (bridge) {
+        try {
+            if (typeof bridge.getEntitlementStatus === 'function') {
+                const result = await bridge.getEntitlementStatus({ productId: PREMIUM_PRODUCT_ID });
+                bridgePremium = !!(result?.isPremium || result?.entitled || result?.active);
+            } else if (typeof bridge.isPremiumUnlocked === 'function') {
+                const result = await bridge.isPremiumUnlocked({ productId: PREMIUM_PRODUCT_ID });
+                bridgePremium = !!(result?.isPremium || result?.entitled || result?.active);
+            }
+        } catch (e) {
+            console.warn('Failed to read premium entitlement from native bridge:', e);
+        }
+    }
+
+    setPremiumUnlocked(localPremium || bridgePremium || IS_PREMIUM_BUILD);
+}
+
+async function purchasePremiumUnlock() {
+    const bridge = getPremiumIapBridge();
+    if (!bridge) {
+        alert('In-app purchase is available in the iOS app build.');
+        return;
+    }
+
+    try {
+        if (typeof bridge.purchasePremium === 'function') {
+            await bridge.purchasePremium({ productId: PREMIUM_PRODUCT_ID });
+        } else if (typeof bridge.purchase === 'function') {
+            await bridge.purchase({ productId: PREMIUM_PRODUCT_ID });
+        } else {
+            alert('Purchase bridge is not configured yet.');
+            return;
+        }
+        await refreshPremiumEntitlement();
+        enforcePlanRestrictions();
+        saveState();
+        renderPremiumSettings();
+        renderCollectibles();
+        renderSoundSettings();
+        renderSyncUI();
+        updateMarbleCount();
+        if (isPremiumMode()) {
+            alert('Premium unlocked.');
+        }
+    } catch (e) {
+        const message = e?.message || 'Purchase was not completed.';
+        alert(message);
+    }
+}
+
+async function restorePremiumPurchases() {
+    const bridge = getPremiumIapBridge();
+    if (!bridge) {
+        alert('Restore is available in the iOS app build.');
+        return;
+    }
+
+    try {
+        if (typeof bridge.restorePurchases === 'function') {
+            await bridge.restorePurchases({ productId: PREMIUM_PRODUCT_ID });
+        } else if (typeof bridge.restore === 'function') {
+            await bridge.restore({ productId: PREMIUM_PRODUCT_ID });
+        } else {
+            alert('Restore bridge is not configured yet.');
+            return;
+        }
+        await refreshPremiumEntitlement();
+        enforcePlanRestrictions();
+        saveState();
+        renderPremiumSettings();
+        renderCollectibles();
+        renderSoundSettings();
+        renderSyncUI();
+        updateMarbleCount();
+        if (isPremiumMode()) {
+            alert('Purchases restored. Premium is active.');
+        } else {
+            alert('No premium purchase was found for this Apple ID.');
+        }
+    } catch (e) {
+        const message = e?.message || 'Restore failed.';
+        alert(message);
+    }
+}
+
+function renderPremiumSettings() {
+    const statusEl = document.getElementById('premiumStatus');
+    const buyBtn = document.getElementById('premiumBuyBtn');
+    const restoreBtn = document.getElementById('premiumRestoreBtn');
+    if (!statusEl || !buyBtn || !restoreBtn) return;
+
+    if (isPremiumMode()) {
+        statusEl.textContent = 'Premium unlocked';
+        buyBtn.disabled = true;
+        buyBtn.textContent = 'Premium Active';
+    } else {
+        statusEl.textContent = `Unlock premium for ${PREMIUM_PRICE_LABEL}`;
+        buyBtn.disabled = false;
+        buyBtn.textContent = `Unlock Premium (${PREMIUM_PRICE_LABEL})`;
+    }
+}
+
+function getAllowedCollectibleTypes() {
+    return isCollectiblesLocked() ? [FREE_COLLECTIBLE_TYPE] : Object.keys(collectibles);
+}
+
+function getAllowedSoundThemeEntries() {
+    if (isSoundThemesLocked()) return [[FREE_SOUND_THEME, soundThemes[FREE_SOUND_THEME]]];
+    return Object.entries(soundThemes);
+}
+
+function enforcePlanRestrictions() {
+    if (isCollectiblesLocked()) {
+        state.marbles = (state.marbles || []).map((marble) => {
+            if (marble.type === FREE_COLLECTIBLE_TYPE) return marble;
+            return {
+                ...marble,
+                type: FREE_COLLECTIBLE_TYPE,
+                marbleType: FREE_COLLECTIBLE_TYPE,
+                imageUrl: null
+            };
+        });
+        state.collectibleType = FREE_COLLECTIBLE_TYPE;
+        state.enabledCollectibles = (state.enabledCollectibles || [])
+            .filter((type) => type === FREE_COLLECTIBLE_TYPE);
+        state.totalMarbles = state.marbles.length;
+    }
+    if (isSoundThemesLocked()) {
+        state.soundTheme = FREE_SOUND_THEME;
+    }
+}
 
 // Audio context for sound effects
 let audioCtx = null;
@@ -120,6 +301,9 @@ const jarInspectScale = 3.1;
 const jarInspectImageCache = {};
 let zoomHintObserver = null;
 let jarEdgeLookupCache = null;
+let confirmDialogResolver = null;
+let isJarOnlyMode = false;
+let overlapResolveFrame = 0;
 
 const SETTLE_LINEAR_SPEED = 0.05;
 const SETTLE_ANGULAR_SPEED = 0.015;
@@ -168,6 +352,7 @@ function renderSyncUI() {
     const statusEl = document.getElementById('syncStatus');
     const formEl = document.getElementById('syncAuthForm');
     const hintEl = document.getElementById('syncHint');
+    const syncGroup = document.getElementById('syncGroup');
     if (!statusEl || !formEl) return;
     const syncBadge = document.getElementById('syncBadge');
     const setSyncBadge = (text, cls) => {
@@ -176,6 +361,18 @@ function renderSyncUI() {
         syncBadge.classList.remove('sync-in', 'sync-out', 'sync-off', 'sync-unknown');
         syncBadge.classList.add(cls);
     };
+
+    if (!isSyncEnabled()) {
+        if (syncGroup) syncGroup.style.display = 'none';
+        if (syncBadge) syncBadge.style.display = 'none';
+        statusEl.innerHTML = '';
+        formEl.style.display = 'none';
+        hintEl.textContent = '';
+        return;
+    }
+
+    if (syncGroup) syncGroup.style.display = '';
+    if (syncBadge) syncBadge.style.display = '';
 
     if (typeof Sync === 'undefined' || !Sync.isConfigured || !Sync.isConfigured()) {
         statusEl.innerHTML = '<p class="sync-hint">Add Supabase URL and anon key to sync-config.js to enable sync.</p>';
@@ -225,6 +422,7 @@ function renderSyncUI() {
 }
 
 async function handleSignIn() {
+    if (!isSyncEnabled()) return;
     const email = document.getElementById('syncEmail')?.value?.trim();
     const password = document.getElementById('syncPassword')?.value;
     if (!email || !password) {
@@ -240,6 +438,7 @@ async function handleSignIn() {
 }
 
 async function handleSignUp() {
+    if (!isSyncEnabled()) return;
     const email = document.getElementById('syncEmail')?.value?.trim();
     const password = document.getElementById('syncPassword')?.value;
     if (!email || !password) {
@@ -260,6 +459,7 @@ async function handleSignUp() {
 }
 
 function onSyncAuthChange(signedIn, user) {
+    if (!isSyncEnabled()) return;
     renderSyncUI();
     if (signedIn) {
         Sync.pullState().then(remote => {
@@ -277,8 +477,9 @@ function onSyncAuthChange(signedIn, user) {
 // Initialize the app
 async function init() {
     preloadImages();
+    await refreshPremiumEntitlement();
     loadState();
-    if (typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
+    if (isSyncEnabled() && typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
         Sync.init();
         const session = await Sync.getSession();
         if (session) {
@@ -296,11 +497,10 @@ async function init() {
     setJarZoom(false);
     renderCollectibles();
     renderSoundSettings();
+    renderPremiumSettings();
     renderSyncUI();
     updateMarbleCount();
-    if (typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
-        window.onSyncAuthChange = onSyncAuthChange;
-    }
+    window.onSyncAuthChange = onSyncAuthChange;
 
     // Delay collectible restoration briefly after physics init.
     scheduleRestoreMarbles(500);
@@ -568,7 +768,7 @@ function updateJarSvgPaths() {
 
 // Get collectible size from jar geometry, tuned so ~100 pieces fill near the top.
 function getMarbleSize() {
-    const targetFillCount = 100;
+    const targetFillCount = Math.max(1, state.jarCapacity || DEFAULT_JAR_CAPACITY);
     const container = document.getElementById('jarContainer');
     if (!container) return 20;
 
@@ -627,18 +827,21 @@ function renderSoundSettings() {
     if (!soundPicker) return;
     
     soundPicker.innerHTML = Object.entries(soundThemes).map(([key, theme]) => {
+        const isLocked = isSoundThemesLocked() && key !== FREE_SOUND_THEME;
         const label = theme.icon
             ? `<img class="sound-option-icon" src="${theme.icon}" alt="">${escapeHtml(theme.name)}`
             : escapeHtml(theme.name);
-        return `<button class="sound-option ${state.soundTheme === key ? 'active' : ''}" 
+        return `<button class="sound-option ${state.soundTheme === key ? 'active' : ''} ${isLocked ? 'premium-locked' : ''}" 
                 data-theme="${escapeHtml(key)}" 
-                title="${escapeHtml(theme.description || '')}">
+                title="${escapeHtml(theme.description || '')}"
+                ${isLocked ? 'aria-disabled="true"' : ''}>
             ${label}
         </button>`;
     }).join('');
     
     soundPicker.querySelectorAll('.sound-option').forEach(btn => {
         btn.addEventListener('click', () => {
+            if (btn.classList.contains('premium-locked')) return;
             soundPicker.querySelectorAll('.sound-option').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.soundTheme = btn.dataset.theme;
@@ -680,14 +883,14 @@ function applyStateData(parsed) {
         ocean: 'seaLife'
     };
     const normalizeType = (type) => typeMap[type] || type;
-    const allTypes = Object.keys(collectibles);
+    const allTypes = getAllowedCollectibleTypes();
     state.marbles = (parsed.marbles || []).map(marble => ({
         ...marble,
         type: normalizeType(marble.type)
     }));
     state.collectibleType = normalizeType(parsed.collectibleType || 'marble');
     state.enabledCollectibles = Array.isArray(parsed.enabledCollectibles)
-        ? [...new Set(parsed.enabledCollectibles.map(normalizeType))].filter(k => collectibles[k])
+        ? [...new Set(parsed.enabledCollectibles.map(normalizeType))].filter(k => collectibles[k] && allTypes.includes(k))
         : allTypes;
     state.collectionHistory = {};
     if (parsed.collectionHistory && typeof parsed.collectionHistory === 'object') {
@@ -705,7 +908,7 @@ function applyStateData(parsed) {
         ? DEFAULT_JAR_CAPACITY
         : parsedCapacity;
     state.jarCapacity = clampJarCapacity(migratedCapacity);
-    state.soundTheme = parsed.soundTheme || 'default';
+    state.soundTheme = parsed.soundTheme || FREE_SOUND_THEME;
 
     // Backfill history from current marbles for older saves and keep it inclusive.
     const inferredHistory = buildCollectionHistoryFromMarbles(state.marbles);
@@ -717,6 +920,8 @@ function applyStateData(parsed) {
         state.marbles = state.marbles.slice(0, state.jarCapacity);
         state.totalMarbles = state.marbles.length;
     }
+
+    enforcePlanRestrictions();
 }
 
 // Load state from localStorage
@@ -732,14 +937,16 @@ function loadState() {
         }
     }
     if (!parsed && state.enabledCollectibles.length === 0) {
-        state.enabledCollectibles = Object.keys(collectibles);
+        state.enabledCollectibles = getAllowedCollectibleTypes();
     }
+    enforcePlanRestrictions();
 }
 
 // Save state to localStorage (and push to sync if signed in)
 function saveState() {
+    enforcePlanRestrictions();
     localStorage.setItem('marbleJarState', JSON.stringify(state));
-    if (typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
+    if (isSyncEnabled() && typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
         Sync.getSession().then(session => {
             if (session) Sync.pushState(state);
         });
@@ -821,6 +1028,7 @@ function renderCollectibles() {
     const picker = document.getElementById('collectiblePicker');
     if (!picker) return;
     picker.innerHTML = Object.entries(collectibles).map(([key, config]) => {
+        const isLocked = isCollectiblesLocked() && key !== FREE_COLLECTIBLE_TYPE;
         const label = config.name.split(/\s+/).slice(1).join(' ') || config.name;
         const enabled = state.enabledCollectibles.includes(key);
         let icon;
@@ -831,16 +1039,20 @@ function renderCollectibles() {
         } else {
             icon = `<span class="collectible-option-icon marble-icon" style="background: ${config.fallbackColors?.[0] || '#999'}"></span>`;
         }
-        return `<label class="collectible-option ${state.collectibleType === key ? 'active' : ''} ${enabled ? 'enabled' : ''}" data-type="${key}">
-            <input type="checkbox" class="collectible-option-checkbox" ${enabled ? 'checked' : ''}>
+        return `<label class="collectible-option ${state.collectibleType === key ? 'active' : ''} ${enabled ? 'enabled' : ''} ${isLocked ? 'premium-locked' : ''}" data-type="${key}">
+            <input type="checkbox" class="collectible-option-checkbox" ${enabled ? 'checked' : ''} ${isLocked ? 'disabled' : ''}>
             <span class="collectible-option-content">${icon}<span class="collectible-option-label">${label}</span></span>
         </label>`;
     }).join('');
     
     picker.querySelectorAll('.collectible-option-checkbox').forEach(cb => {
         cb.addEventListener('change', (e) => {
-            e.stopPropagation();
             const option = cb.closest('.collectible-option');
+            if (option?.classList.contains('premium-locked')) {
+                cb.checked = false;
+                return;
+            }
+            e.stopPropagation();
             const key = option.dataset.type;
             if (cb.checked) {
                 if (!state.enabledCollectibles.includes(key)) state.enabledCollectibles.push(key);
@@ -856,6 +1068,7 @@ function renderCollectibles() {
         span.addEventListener('click', (e) => {
             e.preventDefault();
             const option = span.closest('.collectible-option');
+            if (option?.classList.contains('premium-locked')) return;
             const checkbox = option.querySelector('.collectible-option-checkbox');
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
@@ -870,7 +1083,14 @@ function renderCollectibles() {
 }
 
 function setAllCollectiblesEnabled(enabled) {
-    const allTypes = Object.keys(collectibles);
+    if (isCollectiblesLocked()) {
+        state.enabledCollectibles = enabled ? [FREE_COLLECTIBLE_TYPE] : [];
+        state.collectibleType = FREE_COLLECTIBLE_TYPE;
+        saveState();
+        renderCollectibles();
+        return;
+    }
+    const allTypes = getAllowedCollectibleTypes();
     state.enabledCollectibles = enabled ? [...allTypes] : [];
 
     const picker = document.getElementById('collectiblePicker');
@@ -924,7 +1144,10 @@ function setupPhysics() {
     // Create engine with lower gravity for gentler movement
     engine = Engine.create({
         gravity: { x: 0, y: 0.8 },
-        enableSleeping: false
+        enableSleeping: true,
+        positionIterations: 12,
+        velocityIterations: 8,
+        constraintIterations: 4
     });
     
     // Create renderer
@@ -1018,6 +1241,212 @@ function wakeAllMarbles() {
     marbleBodies.forEach(wakeMarble);
 }
 
+function computeClampState(marble, edgeLookup, bounds) {
+    const pos = marble.position;
+    const radius = marble.circleRadius || getMarbleSize() / 2;
+    const innerPad = 3;
+    const cornerSafetyPad = 4;
+    const clampTolerance = 0.75;
+    const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius } = bounds;
+    const minY = jarTop + radius + innerPad;
+    const maxY = jarBottom - radius - innerPad - 1;
+    let correctedX = pos.x;
+    let correctedY = pos.y;
+    let corrected = false;
+
+    const leftAtY = interpolateXAtY(edgeLookup.left, correctedY);
+    const rightAtY = interpolateXAtY(edgeLookup.right, correctedY);
+    const minX = leftAtY + radius + innerPad;
+    const maxX = rightAtY - radius - innerPad;
+    if (correctedX < minX - clampTolerance) {
+        correctedX = minX;
+        corrected = true;
+    } else if (correctedX > maxX + clampTolerance) {
+        correctedX = maxX;
+        corrected = true;
+    }
+    if (correctedY < minY - clampTolerance) {
+        correctedY = minY;
+        corrected = true;
+    } else if (correctedY > maxY + clampTolerance) {
+        correctedY = maxY;
+        corrected = true;
+    }
+
+    // Recompute side bounds after Y clamp using actual jar edge profile.
+    const leftAtClampedY = interpolateXAtY(edgeLookup.left, correctedY);
+    const rightAtClampedY = interpolateXAtY(edgeLookup.right, correctedY);
+    const minAllowedX = leftAtClampedY + radius + innerPad;
+    const maxAllowedX = rightAtClampedY - radius - innerPad;
+    const cornerZoneTop = jarBottom - curveRadius;
+    const cornerBlend = Math.max(0, Math.min(1, (correctedY - cornerZoneTop) / Math.max(curveRadius, 1)));
+    const cornerInset = cornerSafetyPad * cornerBlend;
+    const minAllowedXWithInset = minAllowedX + cornerInset;
+    const maxAllowedXWithInset = maxAllowedX - cornerInset;
+    if (correctedX < minAllowedXWithInset - clampTolerance) {
+        correctedX = minAllowedXWithInset;
+        corrected = true;
+    } else if (correctedX > maxAllowedXWithInset + clampTolerance) {
+        correctedX = maxAllowedXWithInset;
+        corrected = true;
+    }
+
+    // Clamp to rounded bottom-corner arcs so items cannot cross the visible outline.
+    const arcRadius = Math.max(6, curveRadius - radius - innerPad - cornerSafetyPad);
+    if (correctedX < jarLeft + curveRadius && correctedY > jarBottom - curveRadius) {
+        const cx = jarLeft + curveRadius;
+        const cy = jarBottom - curveRadius;
+        const dx = correctedX - cx;
+        const dy = correctedY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > arcRadius) {
+            const scale = arcRadius / Math.max(dist, 0.0001);
+            correctedX = cx + dx * scale;
+            correctedY = cy + dy * scale;
+            corrected = true;
+        }
+    }
+    if (correctedX > jarRight - curveRadius && correctedY > jarBottom - curveRadius) {
+        const cx = jarRight - curveRadius;
+        const cy = jarBottom - curveRadius;
+        const dx = correctedX - cx;
+        const dy = correctedY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > arcRadius) {
+            const scale = arcRadius / Math.max(dist, 0.0001);
+            correctedX = cx + dx * scale;
+            correctedY = cy + dy * scale;
+            corrected = true;
+        }
+    }
+
+    return {
+        pos,
+        radius,
+        corrected,
+        correctedX,
+        correctedY,
+        maxY,
+        minAllowedXWithInset,
+        maxAllowedXWithInset
+    };
+}
+
+function applyBoundaryCorrection(marble, clampState) {
+    if (!clampState.corrected) return;
+    const dx = clampState.correctedX - marble.position.x;
+    const dy = clampState.correctedY - marble.position.y;
+    const shiftSq = dx * dx + dy * dy;
+    const speedSq = marble.velocity.x * marble.velocity.x + marble.velocity.y * marble.velocity.y;
+    const angularSpeed = Math.abs(marble.angularVelocity || 0);
+    const isCalm = speedSq < 0.0025 && angularSpeed < 0.02;
+    const touchingGlass =
+        clampState.correctedX <= clampState.minAllowedXWithInset + 1.4 ||
+        clampState.correctedX >= clampState.maxAllowedXWithInset - 1.4;
+    // Ignore tiny correction nudges for calm marbles to prevent visible micro-jitter.
+    if (isCalm && shiftSq < 4.0) return;
+
+    Body.setPosition(marble, { x: clampState.correctedX, y: clampState.correctedY });
+    if (isCalm) {
+        Body.setVelocity(marble, { x: 0, y: 0 });
+        Body.setAngularVelocity(marble, 0);
+        if (touchingGlass && typeof Sleeping !== 'undefined' && Sleeping.set) {
+            Sleeping.set(marble, true);
+        }
+        return;
+    }
+    Body.setVelocity(marble, {
+        x: marble.velocity.x * 0.08,
+        y: marble.velocity.y * 0.08
+    });
+}
+
+function isMarbleEscaped(pos, bounds) {
+    return (
+        pos.x < bounds.left - 50 ||
+        pos.x > bounds.right + 50 ||
+        pos.y < bounds.top - 100 ||
+        pos.y > bounds.bottom + 50
+    );
+}
+
+function dampMarbleMotion(marble) {
+    const speed = Math.sqrt(marble.velocity.x ** 2 + marble.velocity.y ** 2);
+    const angularSpeed = Math.abs(marble.angularVelocity || 0);
+
+    if (speed > 30) {
+        Body.setVelocity(marble, {
+            x: marble.velocity.x * 0.3,
+            y: marble.velocity.y * 0.3
+        });
+    }
+
+    // Aggressively damp residual spin; otherwise bodies can keep rotating forever.
+    if (angularSpeed < 0.035) {
+        if (angularSpeed !== 0) Body.setAngularVelocity(marble, 0);
+    } else if (speed < 0.35) {
+        Body.setAngularVelocity(marble, marble.angularVelocity * 0.82);
+    }
+
+    // Kill residual micro-jitter for nearly-settled marbles.
+    if (speed < 0.028 && angularSpeed < 0.02) {
+        if (speed !== 0) Body.setVelocity(marble, { x: 0, y: 0 });
+        if (angularSpeed !== 0) Body.setAngularVelocity(marble, 0);
+    }
+
+    return { speed, angularSpeed };
+}
+
+function applySettleAndSideNudge(marble, clampState, speed, angularSpeed, bounds) {
+    const nearFloorLine = clampState.correctedY >= clampState.maxY - 6;
+    const nearBottomRegion = clampState.correctedY >= bounds.bottom - Math.max(90, bounds.curveRadius + 35);
+    const hasSupportBelow = marbleBodies.some((other) => {
+        if (other === marble) return false;
+        const verticalGap = other.position.y - clampState.correctedY;
+        if (verticalGap < clampState.radius * 0.55 || verticalGap > clampState.radius * 2.3) return false;
+        return Math.abs(other.position.x - clampState.correctedX) < clampState.radius * 1.75;
+    });
+    const canSleepHere = nearBottomRegion && (nearFloorLine || hasSupportBelow);
+
+    // Never keep a body locked if it's not in the floor-settle zone.
+    if (marble._lockedSettled && !nearBottomRegion) {
+        Body.setStatic(marble, false);
+        marble._lockedSettled = false;
+        marble._settleFrames = 0;
+    }
+    const shouldSettleLock =
+        canSleepHere &&
+        ((speed < SETTLE_LINEAR_SPEED && angularSpeed < SETTLE_ANGULAR_SPEED) ||
+        (speed < 0.12 && angularSpeed < 0.04));
+
+    if (shouldSettleLock) {
+        marble._settleFrames = (marble._settleFrames || 0) + 1;
+        if (marble._settleFrames >= SETTLE_FRAMES) {
+            Body.setVelocity(marble, { x: 0, y: 0 });
+            Body.setAngularVelocity(marble, 0);
+            marble.force.x = 0;
+            marble.force.y = 0;
+            marble.torque = 0;
+            if (!marble._lockedSettled) {
+                Body.setStatic(marble, true);
+                marble._lockedSettled = true;
+            }
+            return;
+        }
+    } else {
+        marble._settleFrames = 0;
+    }
+
+    // Intentionally avoid side-wall auto-force nudges; they can cause perpetual jitter.
+}
+
+function respawnEscapedMarble(marble, neck, bounds) {
+    const newX = neck.left + 12 + Math.random() * Math.max(1, (neck.right - neck.left - 24));
+    const newY = bounds.top + 20 + Math.random() * 50;
+    Body.setPosition(marble, { x: newX, y: newY });
+    Body.setVelocity(marble, { x: 0, y: 0 });
+}
+
 // Check and respawn marbles that escape the jar bounds
 function checkMarbleBounds() {
     const container = document.getElementById('jarContainer');
@@ -1025,171 +1454,135 @@ function checkMarbleBounds() {
     const height = container.offsetHeight;
     
     const bounds = getJarBoundaries(width, height);
-    const { left: jarLeft, right: jarRight, top: jarTop, bottom: jarBottom, curveRadius } = bounds;
     const neck = getJarNeckBounds(width, height);
     const edgeLookup = getJarEdgeLookup(width, height);
-    const centerX = width / 2;
     marbleBodies.forEach(marble => {
-        const pos = marble.position;
-        const radius = marble.circleRadius || getMarbleSize() / 2;
-        const innerPad = 2;
-        const minY = jarTop + radius + innerPad;
-        const maxY = jarBottom - radius - innerPad;
-        let needsReset = false;
-        let correctedX = pos.x;
-        let correctedY = pos.y;
-        let corrected = false;
-
-        const leftAtY = interpolateXAtY(edgeLookup.left, correctedY);
-        const rightAtY = interpolateXAtY(edgeLookup.right, correctedY);
-        const minX = leftAtY + radius + innerPad;
-        const maxX = rightAtY - radius - innerPad;
-        if (correctedX < minX) {
-            correctedX = minX;
-            corrected = true;
-        } else if (correctedX > maxX) {
-            correctedX = maxX;
-            corrected = true;
-        }
-        if (correctedY < minY) {
-            correctedY = minY;
-            corrected = true;
-        } else if (correctedY > maxY) {
-            correctedY = maxY;
-            corrected = true;
-        }
-
-        // Recompute side bounds after Y clamp using actual jar edge profile.
-        const leftAtClampedY = interpolateXAtY(edgeLookup.left, correctedY);
-        const rightAtClampedY = interpolateXAtY(edgeLookup.right, correctedY);
-        const minAllowedX = leftAtClampedY + radius + innerPad;
-        const maxAllowedX = rightAtClampedY - radius - innerPad;
-        if (correctedX < minAllowedX) {
-            correctedX = minAllowedX;
-            corrected = true;
-        } else if (correctedX > maxAllowedX) {
-            correctedX = maxAllowedX;
-            corrected = true;
-        }
-
-        // Clamp to rounded bottom-corner arcs so items cannot cross the visible outline.
-        const arcRadius = Math.max(8, curveRadius - radius - innerPad);
-
-        // Left bottom corner quarter-circle
-        if (correctedX < jarLeft + curveRadius && correctedY > jarBottom - curveRadius) {
-            const cx = jarLeft + curveRadius;
-            const cy = jarBottom - curveRadius;
-            const dx = correctedX - cx;
-            const dy = correctedY - cy;
-            const dist = Math.hypot(dx, dy);
-            if (dist > arcRadius) {
-                const scale = arcRadius / Math.max(dist, 0.0001);
-                correctedX = cx + dx * scale;
-                correctedY = cy + dy * scale;
-                corrected = true;
-            }
-        }
-
-        // Right bottom corner quarter-circle
-        if (correctedX > jarRight - curveRadius && correctedY > jarBottom - curveRadius) {
-            const cx = jarRight - curveRadius;
-            const cy = jarBottom - curveRadius;
-            const dx = correctedX - cx;
-            const dy = correctedY - cy;
-            const dist = Math.hypot(dx, dy);
-            if (dist > arcRadius) {
-                const scale = arcRadius / Math.max(dist, 0.0001);
-                correctedX = cx + dx * scale;
-                correctedY = cy + dy * scale;
-                corrected = true;
-            }
-        }
-
-        if (corrected) {
-            Body.setPosition(marble, { x: correctedX, y: correctedY });
-            Body.setVelocity(marble, {
-                x: marble.velocity.x * -0.15,
-                y: marble.velocity.y * -0.15
-            });
-        }
-        
-        // Check if marble escaped bounds
-        if (pos.x < jarLeft - 50 || pos.x > jarRight + 50 || 
-            pos.y < jarTop - 100 || pos.y > jarBottom + 50) {
-            needsReset = true;
-        }
-        
-        // Check if marble has crazy velocity (flung too hard)
-        const speed = Math.sqrt(marble.velocity.x ** 2 + marble.velocity.y ** 2);
-        const angularSpeed = Math.abs(marble.angularVelocity || 0);
-        if (speed > 30) {
-            Body.setVelocity(marble, { 
-                x: marble.velocity.x * 0.3, 
-                y: marble.velocity.y * 0.3 
-            });
-        }
-
-        // Aggressively damp residual spin; otherwise bodies can keep rotating forever.
-        if (angularSpeed < 0.035) {
-            if (angularSpeed !== 0) Body.setAngularVelocity(marble, 0);
-        } else if (speed < 0.35) {
-            Body.setAngularVelocity(marble, marble.angularVelocity * 0.82);
-        }
-
-        const nearFloorLine = correctedY >= maxY - 6;
-        const nearBottomRegion = correctedY >= jarBottom - Math.max(90, curveRadius + 35);
-        const isNearSideWall = correctedX <= minAllowedX + 2 || correctedX >= maxAllowedX - 2;
-        const hasSupportBelow = marbleBodies.some((other) => {
-            if (other === marble) return false;
-            const verticalGap = other.position.y - correctedY;
-            if (verticalGap < radius * 0.55 || verticalGap > radius * 2.3) return false;
-            return Math.abs(other.position.x - correctedX) < radius * 1.75;
-        });
-        const canSleepHere = nearBottomRegion && (nearFloorLine || hasSupportBelow);
-
-        // Never keep a body locked if it's not in the floor-settle zone.
-        if (marble._lockedSettled && !nearBottomRegion) {
-            Body.setStatic(marble, false);
-            marble._lockedSettled = false;
-            marble._settleFrames = 0;
-        }
-        const shouldSettleLock =
-            canSleepHere &&
-            ((speed < SETTLE_LINEAR_SPEED && angularSpeed < SETTLE_ANGULAR_SPEED) ||
-            (speed < 0.12 && angularSpeed < 0.04));
-
-        if (shouldSettleLock) {
-            marble._settleFrames = (marble._settleFrames || 0) + 1;
-            if (marble._settleFrames >= SETTLE_FRAMES) {
-                Body.setVelocity(marble, { x: 0, y: 0 });
-                Body.setAngularVelocity(marble, 0);
-                marble.force.x = 0;
-                marble.force.y = 0;
-                marble.torque = 0;
-                if (!marble._lockedSettled) {
-                    Body.setStatic(marble, true);
-                    marble._lockedSettled = true;
-                }
-                return;
-            }
-        } else {
-            marble._settleFrames = 0;
-        }
-
-        // If an item is hugging a side wall without support, nudge it downward.
-        if (isNearSideWall && !canSleepHere && speed < 0.35) {
-            const pushX = correctedX < centerX ? 0.00008 : -0.00008;
-            Body.applyForce(marble, marble.position, { x: pushX, y: 0.00033 });
-        }
-        
-        if (needsReset) {
-            // Respawn at random position inside jar
-            const newX = neck.left + 12 + Math.random() * Math.max(1, (neck.right - neck.left - 24));
-            const newY = jarTop + 20 + Math.random() * 50;
-            Body.setPosition(marble, { x: newX, y: newY });
-            Body.setVelocity(marble, { x: 0, y: 0 });
-        }
+        const clampState = computeClampState(marble, edgeLookup, bounds);
+        applyBoundaryCorrection(marble, clampState);
+        const needsReset = isMarbleEscaped(clampState.pos, bounds);
+        const { speed, angularSpeed } = dampMarbleMotion(marble);
+        applySettleAndSideNudge(marble, clampState, speed, angularSpeed, bounds);
+        if (needsReset) respawnEscapedMarble(marble, neck, bounds);
     });
+
+    resolveMarbleOverlaps();
+}
+
+function resolveMarbleOverlaps() {
+    if (marbleBodies.length < 2) return;
+    // In zoom mode, avoid runtime overlap nudging to keep the scene visually still.
+    if (isJarZoomed) return;
+
+    // Run less frequently while zoomed because tiny corrections are visually amplified.
+    const frameStride = isJarZoomed ? 6 : 3;
+    overlapResolveFrame = (overlapResolveFrame + 1) % frameStride;
+    if (overlapResolveFrame !== 0) return;
+
+    const cellSize = Math.max(14, getMarbleSize() * 1.15);
+    const grid = new Map();
+    const getKey = (cx, cy) => `${cx},${cy}`;
+
+    for (let i = 0; i < marbleBodies.length; i += 1) {
+        const marble = marbleBodies[i];
+        const cx = Math.floor(marble.position.x / cellSize);
+        const cy = Math.floor(marble.position.y / cellSize);
+        const key = getKey(cx, cy);
+        const bucket = grid.get(key);
+        if (bucket) {
+            bucket.push(i);
+        } else {
+            grid.set(key, [i]);
+        }
+    }
+
+    const pairSeen = new Set();
+    const neighborOffsets = [
+        [0, 0], [1, 0], [0, 1], [1, 1], [-1, 1]
+    ];
+
+    for (const [key, bucket] of grid.entries()) {
+        const [sx, sy] = key.split(',').map(Number);
+        for (const [ox, oy] of neighborOffsets) {
+            const other = grid.get(getKey(sx + ox, sy + oy));
+            if (!other) continue;
+
+            for (let a = 0; a < bucket.length; a += 1) {
+                const i = bucket[a];
+                for (let b = 0; b < other.length; b += 1) {
+                    const j = other[b];
+                    if (i >= j) continue;
+                    const pairKey = `${i}:${j}`;
+                    if (pairSeen.has(pairKey)) continue;
+                    pairSeen.add(pairKey);
+
+                    const A = marbleBodies[i];
+                    const B = marbleBodies[j];
+                    const ra = A.circleRadius || getMarbleSize() / 2;
+                    const rb = B.circleRadius || getMarbleSize() / 2;
+                    const minDist = ra + rb;
+
+                    let dx = B.position.x - A.position.x;
+                    let dy = B.position.y - A.position.y;
+                    let distSq = dx * dx + dy * dy;
+                    if (distSq >= minDist * minDist) continue;
+
+                    if (distSq < 0.000001) {
+                        dx = 0.0001;
+                        dy = 0;
+                        distSq = dx * dx;
+                    }
+
+                    const dist = Math.sqrt(distSq);
+                    const overlap = minDist - dist;
+                    const va2 = A.velocity.x * A.velocity.x + A.velocity.y * A.velocity.y;
+                    const vb2 = B.velocity.x * B.velocity.x + B.velocity.y * B.velocity.y;
+                    const bothCalm = va2 < 0.0016 && vb2 < 0.0016;
+                    if (bothCalm) continue;
+                    // Ignore more tiny overlaps when marbles are already calm to prevent micro-jitter.
+                    const overlapSlop = bothCalm
+                        ? (isJarZoomed ? 1.2 : 0.9)
+                        : 0.38;
+                    if (overlap <= overlapSlop) continue;
+                    if (bothCalm && overlap < (isJarZoomed ? 1.7 : 1.35)) continue;
+
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+
+                    const aLocked = !!A._lockedSettled || !!A.isStatic;
+                    const bLocked = !!B._lockedSettled || !!B.isStatic;
+
+                    const maxCorrection = bothCalm
+                        ? (isJarZoomed ? 0.12 : 0.2)
+                        : 1.15;
+                    const correctionFactor = bothCalm
+                        ? (isJarZoomed ? 0.1 : 0.16)
+                        : 0.58;
+                    const correction = Math.min(maxCorrection, (overlap - overlapSlop) * correctionFactor);
+                    let moveA = correction * 0.5;
+                    let moveB = correction * 0.5;
+                    if (aLocked && !bLocked) {
+                        moveA = 0;
+                        moveB = correction;
+                    } else if (!aLocked && bLocked) {
+                        moveA = correction;
+                        moveB = 0;
+                    } else if (aLocked && bLocked) {
+                        moveA = correction * 0.5;
+                        moveB = correction * 0.5;
+                    }
+
+                    Body.setPosition(A, {
+                        x: A.position.x - nx * moveA,
+                        y: A.position.y - ny * moveA
+                    });
+                    Body.setPosition(B, {
+                        x: B.position.x + nx * moveB,
+                        y: B.position.y + ny * moveB
+                    });
+                }
+            }
+        }
+    }
 }
 
 // Handle collision sounds
@@ -1651,6 +2044,7 @@ function setupMarbleZoom(canvas) {
 
 // Pick a random type from enabled collectibles
 function getRandomEnabledType() {
+    if (isCollectiblesLocked()) return FREE_COLLECTIBLE_TYPE;
     const enabled = state.enabledCollectibles.filter(k => collectibles[k]);
     if (enabled.length === 0) return state.collectibleType;
     return enabled[Math.floor(Math.random() * enabled.length)];
@@ -1661,10 +2055,58 @@ function getMarbleTextureResolution(displayDiameter) {
     return Math.max(64, Math.round(displayDiameter * dpr * 1.6));
 }
 
+function findLeastOverlapSpawn(radius, bounds, neck, options = {}) {
+    const tries = options.tries || 28;
+    const topOffset = options.topOffset || 16;
+    const depthJitter = options.depthJitter || 20;
+    const maxDepth = options.maxDepth || 130;
+    const lateralPadding = 12;
+
+    const safeNeckWidth = Math.max(1, neck.right - neck.left - lateralPadding * 2);
+    const fallback = {
+        x: neck.left + lateralPadding + Math.random() * safeNeckWidth,
+        y: bounds.top + topOffset
+    };
+
+    let best = fallback;
+    let bestPenalty = Infinity;
+
+    for (let attempt = 0; attempt < tries; attempt += 1) {
+        const depthBase = Math.min(maxDepth, attempt * 4);
+        const x = neck.left + lateralPadding + Math.random() * safeNeckWidth;
+        const y = bounds.top + topOffset + depthBase + Math.random() * depthJitter;
+        let penalty = 0;
+
+        for (let i = 0; i < marbleBodies.length; i += 1) {
+            const other = marbleBodies[i];
+            const or = other.circleRadius || radius;
+            const minDist = radius + or + 1.2;
+            const dx = x - other.position.x;
+            const dy = y - other.position.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < minDist) {
+                penalty += (minDist - dist);
+            }
+        }
+
+        if (penalty <= 0.0001) {
+            return { x, y };
+        }
+
+        if (penalty < bestPenalty) {
+            bestPenalty = penalty;
+            best = { x, y };
+        }
+    }
+
+    return best;
+}
+
 // Add a collectible to the jar
 function addMarble(type, options = {}) {
     const { playSound = true } = options;
     if (state.totalMarbles >= state.jarCapacity) return null;
+    if (isCollectiblesLocked()) type = FREE_COLLECTIBLE_TYPE;
     if (type == null) type = getRandomEnabledType();
     const container = document.getElementById('jarContainer');
     const width = container.offsetWidth;
@@ -1678,9 +2120,10 @@ function addMarble(type, options = {}) {
     const bounds = getJarBoundaries(width, height);
     const neck = getJarNeckBounds(width, height);
     
-    // Start position (drop from inside jar, below the lid)
-    const x = neck.left + 12 + Math.random() * Math.max(1, (neck.right - neck.left - 24));
-    const y = bounds.top + 15;
+    // Start position (drop from inside jar, below the lid) with overlap-aware placement.
+    const spawn = findLeastOverlapSpawn(radius, bounds, neck, { tries: 30, topOffset: 14, maxDepth: 120 });
+    const x = spawn.x;
+    const y = spawn.y;
     
     let renderOptions;
     let imageUrl = '';
@@ -1716,11 +2159,12 @@ function addMarble(type, options = {}) {
     }
     
     const marble = Bodies.circle(x, y, radius, {
-        restitution: 0.18,
-        friction: 0.05,
+        restitution: 0.26,
+        friction: 0.03,
         frictionStatic: 0.01,
         frictionAir: 0.008,
         density: 0.001,
+        slop: 0.01,
         sleepThreshold: 25,
         render: renderOptions
     });
@@ -1829,10 +2273,16 @@ function restoreMarbles() {
 
     marblesToRestore.forEach((marbleData, index) => {
         const timerId = setTimeout(() => {
-            const x = neck.left + 12 + Math.random() * Math.max(1, (neck.right - neck.left - 24));
-            const y = bounds.top + 20 + (index * 2) % 60;
-            
             const radius = currentSize / 2;
+            const spawn = findLeastOverlapSpawn(radius, bounds, neck, {
+                tries: 36,
+                topOffset: 18,
+                depthJitter: 16,
+                maxDepth: 150
+            });
+            const x = spawn.x;
+            const y = spawn.y;
+
             const config = collectibles[marbleData.type];
             
             let renderOptions;
@@ -1987,6 +2437,38 @@ function updateMarbleCount() {
     if (capacityInput) capacityInput.value = String(state.jarCapacity);
 }
 
+function closeConfirmDialog(result) {
+    const overlay = document.getElementById('confirmOverlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+        overlay.setAttribute('aria-hidden', 'true');
+    }
+    if (confirmDialogResolver) {
+        const resolve = confirmDialogResolver;
+        confirmDialogResolver = null;
+        resolve(!!result);
+    }
+}
+
+function showConfirmDialog(message, confirmLabel = 'Confirm') {
+    const overlay = document.getElementById('confirmOverlay');
+    const messageEl = document.getElementById('confirmMessage');
+    const confirmBtn = document.getElementById('confirmConfirmBtn');
+
+    if (!overlay || !messageEl || !confirmBtn) {
+        return Promise.resolve(window.confirm(message));
+    }
+
+    messageEl.textContent = message;
+    confirmBtn.textContent = confirmLabel;
+    overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    return new Promise((resolve) => {
+        confirmDialogResolver = resolve;
+    });
+}
+
 function setMarbleCount(targetCount) {
     if (!Number.isFinite(targetCount)) return;
     const clampedTarget = Math.max(0, Math.min(state.jarCapacity, Math.floor(targetCount)));
@@ -2021,7 +2503,10 @@ function setJarCapacity(nextCapacity) {
     state.jarCapacity = clamped;
     if (state.totalMarbles > clamped) {
         setMarbleCount(clamped);
-        return;
+    }
+    if (marbleBodies.length > 0) {
+        resizeExistingMarbles();
+        checkMarbleBounds();
     }
     saveState();
     updateMarbleCount();
@@ -2049,6 +2534,26 @@ function setFrontMenuOpen(open) {
 function toggleFrontMenu() {
     const menu = document.getElementById('frontMenu');
     setFrontMenuOpen(!(menu && menu.classList.contains('open')));
+}
+
+function setJarOnlyMode(enabled) {
+    isJarOnlyMode = !!enabled;
+    document.body.classList.toggle('jar-only-mode', isJarOnlyMode);
+    if (isJarOnlyMode) {
+        setFrontMenuOpen(false);
+    }
+}
+
+function isBlankAreaTapTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest(
+        '#settingsPage.active, #confirmOverlay.active, #marbleZoomOverlay.active, #jarInspectOverlay.active'
+    )) return false;
+    if (target.closest(
+        '#jarContainer, header, .jar-stats, .menu-dock, .front-menu, .menu-backdrop, .settings-page, .confirm-modal, .marble-zoom-modal, .jar-inspect-modal'
+    )) return false;
+    if (target.closest('button, a, input, textarea, select, label, [role=\"button\"]')) return false;
+    return !!target.closest('body, .app-container, main, .jar-section, .zoom-center-row');
 }
 
 function positionFrontMenu() {
@@ -2279,9 +2784,16 @@ function setupEventListeners() {
     // Settings button - open settings page
     document.getElementById('settingsBtn')?.addEventListener('click', openSettings);
     document.getElementById('settingsCloseBtn')?.addEventListener('click', closeSettings);
-    document.getElementById('settingsResetBtn')?.addEventListener('click', () => {
-        if (confirm('Empty your jar? This clears current jar contents but keeps your collection history.')) {
+    document.getElementById('premiumBuyBtn')?.addEventListener('click', purchasePremiumUnlock);
+    document.getElementById('premiumRestoreBtn')?.addEventListener('click', restorePremiumPurchases);
+    document.getElementById('settingsResetBtn')?.addEventListener('click', async () => {
+        const confirmed = await showConfirmDialog(
+            'Warning: all items will be removed from the jar.\n\nThis cannot be undone.',
+            'Empty Jar'
+        );
+        if (confirmed) {
             clearAllMarbles();
+            alert('Jar emptied.');
         }
     });
     document.getElementById('selectAllCollectiblesBtn')?.addEventListener('click', () => {
@@ -2290,9 +2802,14 @@ function setupEventListeners() {
     document.getElementById('deselectAllCollectiblesBtn')?.addEventListener('click', () => {
         setAllCollectiblesEnabled(false);
     });
-    document.getElementById('settingsClearCollectiblesBtn')?.addEventListener('click', () => {
-        if (confirm('Clear all collected-item history? This will reset what appears unlocked in Collection.')) {
+    document.getElementById('settingsClearCollectiblesBtn')?.addEventListener('click', async () => {
+        const confirmed = await showConfirmDialog(
+            'Warning: all items that have been tracked as collected will be cleared. Current items in the jar will stay.\n\nThis cannot be undone.',
+            'Clear History'
+        );
+        if (confirmed) {
             clearCollectionHistory();
+            alert('Collected items history cleared.');
         }
     });
     const applyCountBtn = document.getElementById('settingsApplyCountBtn');
@@ -2335,6 +2852,11 @@ function setupEventListeners() {
     document.getElementById('menuCollectionLink')?.addEventListener('click', () => setFrontMenuOpen(false));
     document.getElementById('menuBackdrop')?.addEventListener('click', () => setFrontMenuOpen(false));
     document.getElementById('jarInspectClose')?.addEventListener('click', () => setJarZoom(false));
+    document.getElementById('confirmCancelBtn')?.addEventListener('click', () => closeConfirmDialog(false));
+    document.getElementById('confirmConfirmBtn')?.addEventListener('click', () => closeConfirmDialog(true));
+    document.getElementById('confirmOverlay')?.addEventListener('click', (e) => {
+        if (e.target?.id === 'confirmOverlay') closeConfirmDialog(false);
+    });
     document.getElementById('jarInspectOverlay')?.addEventListener('click', (e) => {
         if (e.target?.id === 'jarInspectOverlay') setJarZoom(false);
     });
@@ -2376,6 +2898,7 @@ function setupEventListeners() {
     syncBadge?.setAttribute('role', 'button');
     syncBadge?.setAttribute('tabindex', '0');
     const openSyncSettings = () => {
+        if (!isSyncEnabled()) return;
         setFrontMenuOpen(false);
         openSettings();
         const syncGroup = document.getElementById('syncGroup');
@@ -2401,8 +2924,15 @@ function setupEventListeners() {
     }
     positionZoomButtonByHintVisibility();
     window.addEventListener('resize', positionFrontMenu);
+    document.addEventListener('click', (e) => {
+        if (!isBlankAreaTapTarget(e.target)) return;
+        setJarOnlyMode(!isJarOnlyMode);
+    });
 
     document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('confirmOverlay')?.classList.contains('active')) {
+            closeConfirmDialog(false);
+        }
         if (e.key === 'Escape') setFrontMenuOpen(false);
         if (e.key === 'Escape' && isJarZoomed) {
             setJarZoom(false);
@@ -2419,6 +2949,7 @@ function openSettings() {
     document.getElementById('settingsPage').classList.add('active');
     document.body.classList.add('settings-open');
     document.body.style.overflow = 'hidden';
+    renderPremiumSettings();
     const countInput = document.getElementById('settingsMarbleCountInput');
     if (countInput) countInput.value = String(state.totalMarbles);
     const capacityInput = document.getElementById('settingsCapacityInput');

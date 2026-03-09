@@ -514,6 +514,19 @@ body.settings-open .menu-backdrop {
     display: none !important;
 }
 
+body.jar-only-mode header,
+body.jar-only-mode .jar-stats,
+body.jar-only-mode .menu-dock,
+body.jar-only-mode footer {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+body.jar-only-mode .front-menu,
+body.jar-only-mode .menu-backdrop {
+    display: none !important;
+}
+
 .menu-backdrop {
     position: fixed;
     inset: 0;
@@ -1015,6 +1028,12 @@ body.settings-open .menu-backdrop {
     transform: translateY(-1px);
 }
 
+.collectible-bulk-btn:active {
+    transform: translateY(1px) scale(0.985);
+    filter: brightness(0.94);
+    box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.14);
+}
+
 .collectible-bulk-btn.secondary {
     background: #8aa2a0;
 }
@@ -1086,6 +1105,41 @@ body.settings-open .menu-backdrop {
     background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
     color: inherit;
     border-color: var(--accent);
+}
+
+.collectible-option.premium-locked {
+    position: relative;
+    opacity: 0.3;
+    filter: grayscale(1) saturate(0) contrast(0.85) brightness(1.05);
+    background: #eceff1;
+    border-color: #d5dadd;
+    cursor: not-allowed;
+}
+
+.collectible-option.premium-locked:hover {
+    transform: none;
+    border-color: #d5dadd;
+}
+
+.collectible-option.premium-locked .collectible-option-checkbox {
+    accent-color: #b8c0c4;
+    opacity: 0.55;
+    filter: grayscale(1);
+    cursor: not-allowed;
+}
+
+.collectible-option.premium-locked::after {
+    content: 'Premium';
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.55rem;
+    line-height: 1;
+    color: #fff;
+    background: rgba(45, 52, 54, 0.85);
+    padding: 2px 4px;
+    border-radius: 6px;
 }
 
 /* Modal */
@@ -1456,6 +1510,44 @@ body.settings-open .menu-backdrop {
     color: var(--accent-hover);
 }
 
+.sound-option.premium-locked {
+    position: relative;
+    opacity: 0.3;
+    filter: grayscale(1) saturate(0) contrast(0.85) brightness(1.05);
+    background: #eceff1;
+    border-color: #d5dadd;
+    cursor: not-allowed;
+}
+
+.sound-option.premium-locked:hover {
+    transform: none;
+    border-color: #d5dadd;
+    background: #eceff1;
+}
+
+.sound-option.premium-locked::after {
+    content: 'Premium';
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.55rem;
+    line-height: 1;
+    color: #fff;
+    background: rgba(45, 52, 54, 0.85);
+    padding: 2px 4px;
+    border-radius: 6px;
+}
+
+.premium-only-note {
+    margin: -4px 0 10px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #7a8488;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
+
 .capacity-row {
     display: flex;
     align-items: center;
@@ -1598,6 +1690,46 @@ body.settings-open .menu-backdrop {
     grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
 }
 
+.premium-status {
+    font-size: 0.9rem;
+    color: #516766;
+    margin: 2px 0 10px;
+}
+
+.premium-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+.premium-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    color: #fff;
+    background: var(--accent);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.premium-btn:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+}
+
+.premium-btn:disabled {
+    opacity: 0.72;
+    cursor: default;
+    transform: none;
+}
+
+.premium-btn.secondary {
+    background: #8aa2a0;
+}
+
 /* Sync section */
 #syncGroup {
     padding: 18px;
@@ -1731,6 +1863,10 @@ body.settings-open .menu-backdrop {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
 }
 
 .danger-btn:hover {
@@ -1744,6 +1880,22 @@ body.settings-open .menu-backdrop {
     object-fit: contain;
     vertical-align: -2px;
     margin-right: 6px;
+}
+
+#settingsClearCollectiblesBtn .btn-icon,
+#settingsResetBtn .btn-icon {
+    margin-right: 0;
+    filter: invert(51%) sepia(56%) saturate(483%) hue-rotate(128deg) brightness(90%) contrast(92%);
+}
+
+#settingsClearCollectiblesBtn,
+#settingsResetBtn {
+    gap: 2px;
+}
+
+#settingsClearCollectiblesBtn:hover .btn-icon,
+#settingsResetBtn:hover .btn-icon {
+    filter: brightness(0) invert(1);
 }
 
 .danger-btn.subtle {
@@ -1807,10 +1959,27 @@ body.settings-open .menu-backdrop {
     font-size: 0.9rem;
     font-weight: 700;
     cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, background-color 0.12s ease;
+    box-shadow: 0 2px 0 rgba(11, 77, 73, 0.22);
 }
 
 .settings-inline-btn:hover {
     opacity: 0.92;
+}
+
+.settings-inline-btn:active {
+    transform: translateY(1px) scale(0.985);
+    filter: brightness(0.94);
+    box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.14);
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .collectible-bulk-btn:active,
+    .settings-inline-btn:active {
+        transform: translateY(2px) scale(0.975);
+        filter: brightness(0.9);
+        box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.2);
+    }
 }
 
 .settings-inline-btn.secondary {
@@ -1820,4 +1989,68 @@ body.settings-open .menu-backdrop {
 
 .settings-capacity-controls .settings-inline-btn {
     min-width: 40px;
+}
+
+.confirm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.42);
+    z-index: 2600;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.confirm-overlay.active {
+    display: flex;
+}
+
+.confirm-modal {
+    width: min(420px, 94vw);
+    background: #fff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 22px 56px rgba(0, 0, 0, 0.26);
+}
+
+.confirm-modal h3 {
+    margin: 0 0 8px;
+    font-size: 1.1rem;
+    color: #263332;
+}
+
+.confirm-modal p {
+    margin: 0;
+    color: #4f6160;
+    font-size: 0.95rem;
+    line-height: 1.35;
+    white-space: pre-line;
+}
+
+.confirm-actions {
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.confirm-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 9px 13px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.confirm-btn.secondary {
+    background: #ecf2f1;
+    color: #3f5554;
+}
+
+.confirm-btn.primary {
+    background: #d45454;
+    color: #fff;
 }
