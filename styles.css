@@ -1039,10 +1039,13 @@ body.jar-only-mode .menu-backdrop {
 }
 
 .collectible-bulk-btn:disabled {
-    opacity: 0.45;
+    opacity: 1;
     cursor: not-allowed;
     transform: none;
-    filter: grayscale(1);
+    filter: none;
+    background: #aeb9b8;
+    color: #f4f7f6;
+    box-shadow: none;
 }
 
 .collectible-option {
@@ -1053,9 +1056,9 @@ body.jar-only-mode .menu-backdrop {
     gap: 4px;
     padding: 8px 6px;
     aspect-ratio: 1;
-    background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
-    border: 2px solid transparent;
-    border-radius: 12px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     font-family: inherit;
     font-size: 0.7rem;
     font-weight: 600;
@@ -1104,28 +1107,26 @@ body.jar-only-mode .menu-backdrop {
 }
 
 .collectible-option:hover {
-    border-color: var(--accent);
-    transform: translateY(-3px);
+    transform: translateY(-2px);
 }
 
 .collectible-option.active {
-    background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
     color: inherit;
-    border-color: var(--accent);
+}
+
+.collectible-option.active .collectible-option-icon {
+    box-shadow: 0 0 0 2px rgba(26, 163, 157, 0.55), 0 3px 8px rgba(26, 163, 157, 0.2);
 }
 
 .collectible-option.premium-locked {
     position: relative;
     opacity: 0.3;
     filter: grayscale(1) saturate(0) contrast(0.85) brightness(1.05);
-    background: #eceff1;
-    border-color: #d5dadd;
     cursor: not-allowed;
 }
 
 .collectible-option.premium-locked:hover {
     transform: none;
-    border-color: #d5dadd;
 }
 
 .collectible-option.premium-locked .collectible-option-checkbox {
@@ -1150,14 +1151,11 @@ body.jar-only-mode .menu-backdrop {
 }
 
 .collectible-option.free-locked {
-    opacity: 0.55;
-    filter: grayscale(0.8);
     cursor: not-allowed;
 }
 
 .collectible-option.free-locked:hover {
     transform: none;
-    border-color: rgba(0, 0, 0, 0.12);
 }
 
 .collectible-option.free-locked .collectible-option-checkbox {
@@ -1504,9 +1502,9 @@ body.jar-only-mode .menu-backdrop {
     gap: 4px;
     padding: 10px 6px;
     aspect-ratio: 1;
-    background: #f8f9fa;
-    border: 2px solid transparent;
-    border-radius: 12px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     font-family: inherit;
     font-size: 0.75rem;
     font-weight: 600;
@@ -1524,30 +1522,27 @@ body.jar-only-mode .menu-backdrop {
 }
 
 .sound-option:hover {
-    border-color: var(--accent);
-    background: #fff;
     transform: scale(1.02);
 }
 
 .sound-option.active {
-    background: linear-gradient(135deg, rgba(26, 163, 157, 0.1) 0%, rgba(15, 127, 122, 0.1) 100%);
-    border-color: var(--accent);
     color: var(--accent-hover);
+}
+
+.sound-option.active .sound-option-icon {
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(26, 163, 157, 0.55), 0 3px 8px rgba(26, 163, 157, 0.2);
 }
 
 .sound-option.premium-locked {
     position: relative;
     opacity: 0.3;
     filter: grayscale(1) saturate(0) contrast(0.85) brightness(1.05);
-    background: #eceff1;
-    border-color: #d5dadd;
     cursor: not-allowed;
 }
 
 .sound-option.premium-locked:hover {
     transform: none;
-    border-color: #d5dadd;
-    background: #eceff1;
 }
 
 .sound-option.premium-locked::after {

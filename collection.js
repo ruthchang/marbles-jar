@@ -149,17 +149,11 @@ function renderCollection(collected) {
         
         const isComplete = categoryCollected >= itemCount;
         const categoryLabel = category.name.split(/\s+/).slice(1).join(' ') || category.name;
-        const categoryIcon = isMarbleType && category.marbleGradients?.length
-            ? `<span class="category-header-icon marble-icon" style="background: ${category.marbleGradients[0]}"></span>`
-            : category.images?.length
-                ? `<img class="category-header-icon" src="${category.images[0]}" alt="">`
-                : `<span class="category-header-icon marble-icon" style="background: ${category.fallbackColors?.[0] || '#999'}"></span>`;
         
         return `
             <div class="category-section">
                 <div class="category-header">
                     <div class="category-title-wrap">
-                        ${categoryIcon}
                         <h2 class="category-title">${categoryLabel}</h2>
                     </div>
                     <span class="category-count ${isComplete ? 'complete' : ''}">
