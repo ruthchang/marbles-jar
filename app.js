@@ -302,11 +302,20 @@ let zoomHintObserver = null;
 let jarEdgeLookupCache = null;
 let confirmDialogResolver = null;
 let isJarOnlyMode = false;
-let overlapResolveFrame = 0;
 
-const SETTLE_LINEAR_SPEED = 0.05;
-const SETTLE_ANGULAR_SPEED = 0.015;
-const SETTLE_FRAMES = 12;
+const CALM_LINEAR_SPEED = 0.03;
+const CALM_ANGULAR_SPEED = 0.01;
+const SPAWN_SETTLE_FRAMES = 18;
+const DISPLAY_LERP = 0.26;
+const DISPLAY_LERP_FRESH = 0.34;
+const DISPLAY_SNAP_DISTANCE = 0.3;
+const DISPLAY_SNAP_ANGLE = 0.02;
+const DISC_GRAVITY_SCALE = 0.28;
+const DISC_AIR_DAMPING = 0.992;
+const DISC_BOUNCE = 0.04;
+const DISC_PAIR_RESTITUTION = 0.02;
+const DISC_PAIR_PASSES = 6;
+const DISC_SEPARATION_EPSILON = 0.08;
 
 const JAR_SHAPE = {
     neckLeft: 0.25,
@@ -827,23 +836,30 @@ function renderSoundSettings() {
     
     soundPicker.innerHTML = Object.entries(soundThemes).map(([key, theme]) => {
         const isLocked = isSoundThemesLocked() && key !== FREE_SOUND_THEME;
+        const isSelected = state.soundTheme === key;
         const label = theme.icon
             ? `<img class="sound-option-icon" src="${theme.icon}" alt="">${escapeHtml(theme.name)}`
             : escapeHtml(theme.name);
-        return `<button class="sound-option ${state.soundTheme === key ? 'active' : ''} ${isLocked ? 'premium-locked' : ''}" 
-                data-theme="${escapeHtml(key)}" 
-                title="${escapeHtml(theme.description || '')}"
-                ${isLocked ? 'aria-disabled="true"' : ''}>
-            ${label}
-        </button>`;
+        return `<label class="sound-option ${isSelected ? 'active' : ''} ${isLocked ? 'premium-locked' : ''}" 
+                title="${escapeHtml(theme.description || '')}">
+            <input 
+                type="radio" 
+                name="soundTheme"
+                class="sound-option-radio ${key === FREE_SOUND_THEME ? 'free-theme-radio' : ''}"
+                value="${escapeHtml(key)}"
+                ${isSelected ? 'checked' : ''}
+                ${isLocked ? 'disabled' : ''}>
+            <span class="sound-option-content">${label}</span>
+        </label>`;
     }).join('');
     
-    soundPicker.querySelectorAll('.sound-option').forEach(btn => {
-        btn.addEventListener('click', () => {
-            if (btn.classList.contains('premium-locked')) return;
-            soundPicker.querySelectorAll('.sound-option').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            state.soundTheme = btn.dataset.theme;
+    soundPicker.querySelectorAll('.sound-option-radio').forEach(input => {
+        input.addEventListener('change', () => {
+            const option = input.closest('.sound-option');
+            if (!input.checked || option?.classList.contains('premium-locked')) return;
+            soundPicker.querySelectorAll('.sound-option').forEach(o => o.classList.remove('active'));
+            option?.classList.add('active');
+            state.soundTheme = input.value;
             saveState();
             
             // Play a preview sound
@@ -1142,12 +1158,14 @@ function setupPhysics() {
     canvas.width = width;
     canvas.height = height;
     
-    // Create engine with lower gravity for gentler movement
+    // Reset wall cache when rebuilding physics on resize/reinit.
+    jarWalls = [];
+
     engine = Engine.create({
-        gravity: { x: 0, y: 0.8 },
+        gravity: { x: 0, y: 0.95 },
         enableSleeping: true,
-        positionIterations: 12,
-        velocityIterations: 8,
+        positionIterations: 18,
+        velocityIterations: 14,
         constraintIterations: 4
     });
     
@@ -1161,7 +1179,8 @@ function setupPhysics() {
             wireframes: false,
             background: 'transparent',
             showSleeping: false,
-            pixelRatio: window.devicePixelRatio || 1
+            pixelRatio: window.devicePixelRatio || 1,
+            hasBounds: false
         }
     });
     
@@ -1173,9 +1192,9 @@ function setupPhysics() {
     const wallOptions = {
         isStatic: true,
         render: { visible: false },
-        friction: 0.08,
-        frictionStatic: 0,
-        restitution: 0.02
+        friction: 0.02,
+        frictionStatic: 0.05,
+        restitution: 0
     };
     
     const wallThickness = 30;
@@ -1209,6 +1228,7 @@ function setupPhysics() {
         const clipW = containerEl?.offsetWidth || width;
         const clipH = containerEl?.offsetHeight || height;
         const ctx = render.context;
+        renderJarMarbles(ctx, clipW, clipH);
         ctx.save();
         ctx.globalCompositeOperation = 'destination-in';
         ctx.beginPath();
@@ -1231,11 +1251,8 @@ function setupPhysics() {
 }
 
 function wakeMarble(marble) {
-    marble._settleFrames = 0;
-    if (marble._lockedSettled) {
-        Body.setStatic(marble, false);
-        marble._lockedSettled = false;
-    }
+    marble._spawnFrames = Math.max(marble._spawnFrames || 0, 6);
+    marble._sleepFrames = 0;
 }
 
 function wakeAllMarbles() {
@@ -1372,73 +1389,17 @@ function isMarbleEscaped(pos, bounds) {
 }
 
 function dampMarbleMotion(marble) {
-    const speed = Math.sqrt(marble.velocity.x ** 2 + marble.velocity.y ** 2);
-    const angularSpeed = Math.abs(marble.angularVelocity || 0);
-
-    if (speed > 30) {
-        Body.setVelocity(marble, {
-            x: marble.velocity.x * 0.3,
-            y: marble.velocity.y * 0.3
-        });
+    if (marble._spawnFrames && marble._spawnFrames > 0) {
+        marble._spawnFrames -= 1;
     }
-
-    // Aggressively damp residual spin; otherwise bodies can keep rotating forever.
-    if (angularSpeed < 0.035) {
-        if (angularSpeed !== 0) Body.setAngularVelocity(marble, 0);
-    } else if (speed < 0.35) {
-        Body.setAngularVelocity(marble, marble.angularVelocity * 0.82);
-    }
-
-    // Kill residual micro-jitter for nearly-settled marbles.
-    if (speed < 0.028 && angularSpeed < 0.02) {
-        if (speed !== 0) Body.setVelocity(marble, { x: 0, y: 0 });
-        if (angularSpeed !== 0) Body.setAngularVelocity(marble, 0);
-    }
-
-    return { speed, angularSpeed };
+    if ((marble.angle || 0) !== 0) Body.setAngle(marble, 0);
+    if ((marble.angularVelocity || 0) !== 0) Body.setAngularVelocity(marble, 0);
+    const speed = Math.hypot(marble._vx || 0, marble._vy || 0);
+    return { speed, angularSpeed: 0, isFresh: (marble._spawnFrames || 0) > 0 };
 }
 
 function applySettleAndSideNudge(marble, clampState, speed, angularSpeed, bounds) {
-    const nearFloorLine = clampState.correctedY >= clampState.maxY - 6;
-    const nearBottomRegion = clampState.correctedY >= bounds.bottom - Math.max(90, bounds.curveRadius + 35);
-    const hasSupportBelow = marbleBodies.some((other) => {
-        if (other === marble) return false;
-        const verticalGap = other.position.y - clampState.correctedY;
-        if (verticalGap < clampState.radius * 0.55 || verticalGap > clampState.radius * 2.3) return false;
-        return Math.abs(other.position.x - clampState.correctedX) < clampState.radius * 1.75;
-    });
-    const canSleepHere = nearBottomRegion && (nearFloorLine || hasSupportBelow);
-
-    // Never keep a body locked if it's not in the floor-settle zone.
-    if (marble._lockedSettled && !nearBottomRegion) {
-        Body.setStatic(marble, false);
-        marble._lockedSettled = false;
-        marble._settleFrames = 0;
-    }
-    const shouldSettleLock =
-        canSleepHere &&
-        ((speed < SETTLE_LINEAR_SPEED && angularSpeed < SETTLE_ANGULAR_SPEED) ||
-        (speed < 0.12 && angularSpeed < 0.04));
-
-    if (shouldSettleLock) {
-        marble._settleFrames = (marble._settleFrames || 0) + 1;
-        if (marble._settleFrames >= SETTLE_FRAMES) {
-            Body.setVelocity(marble, { x: 0, y: 0 });
-            Body.setAngularVelocity(marble, 0);
-            marble.force.x = 0;
-            marble.force.y = 0;
-            marble.torque = 0;
-            if (!marble._lockedSettled) {
-                Body.setStatic(marble, true);
-                marble._lockedSettled = true;
-            }
-            return;
-        }
-    } else {
-        marble._settleFrames = 0;
-    }
-
-    // Intentionally avoid side-wall auto-force nudges; they can cause perpetual jitter.
+    return;
 }
 
 function respawnEscapedMarble(marble, neck, bounds) {
@@ -1453,137 +1414,18 @@ function checkMarbleBounds() {
     const container = document.getElementById('jarContainer');
     const width = container.offsetWidth;
     const height = container.offsetHeight;
-    
-    const bounds = getJarBoundaries(width, height);
-    const neck = getJarNeckBounds(width, height);
-    const edgeLookup = getJarEdgeLookup(width, height);
-    marbleBodies.forEach(marble => {
-        const clampState = computeClampState(marble, edgeLookup, bounds);
-        applyBoundaryCorrection(marble, clampState);
-        const needsReset = isMarbleEscaped(clampState.pos, bounds);
-        const { speed, angularSpeed } = dampMarbleMotion(marble);
-        applySettleAndSideNudge(marble, clampState, speed, angularSpeed, bounds);
-        if (needsReset) respawnEscapedMarble(marble, neck, bounds);
-    });
-
-    resolveMarbleOverlaps();
+    updateMarbleDiscPhysics(width, height);
 }
 
 function resolveMarbleOverlaps() {
-    if (marbleBodies.length < 2) return;
-    // In zoom mode, avoid runtime overlap nudging to keep the scene visually still.
-    if (isJarZoomed) return;
+    return;
+}
 
-    // Run less frequently while zoomed because tiny corrections are visually amplified.
-    const frameStride = isJarZoomed ? 6 : 3;
-    overlapResolveFrame = (overlapResolveFrame + 1) % frameStride;
-    if (overlapResolveFrame !== 0) return;
-
-    const cellSize = Math.max(14, getMarbleSize() * 1.15);
-    const grid = new Map();
-    const getKey = (cx, cy) => `${cx},${cy}`;
-
-    for (let i = 0; i < marbleBodies.length; i += 1) {
-        const marble = marbleBodies[i];
-        const cx = Math.floor(marble.position.x / cellSize);
-        const cy = Math.floor(marble.position.y / cellSize);
-        const key = getKey(cx, cy);
-        const bucket = grid.get(key);
-        if (bucket) {
-            bucket.push(i);
-        } else {
-            grid.set(key, [i]);
-        }
-    }
-
-    const pairSeen = new Set();
-    const neighborOffsets = [
-        [0, 0], [1, 0], [0, 1], [1, 1], [-1, 1]
-    ];
-
-    for (const [key, bucket] of grid.entries()) {
-        const [sx, sy] = key.split(',').map(Number);
-        for (const [ox, oy] of neighborOffsets) {
-            const other = grid.get(getKey(sx + ox, sy + oy));
-            if (!other) continue;
-
-            for (let a = 0; a < bucket.length; a += 1) {
-                const i = bucket[a];
-                for (let b = 0; b < other.length; b += 1) {
-                    const j = other[b];
-                    if (i >= j) continue;
-                    const pairKey = `${i}:${j}`;
-                    if (pairSeen.has(pairKey)) continue;
-                    pairSeen.add(pairKey);
-
-                    const A = marbleBodies[i];
-                    const B = marbleBodies[j];
-                    const ra = A.circleRadius || getMarbleSize() / 2;
-                    const rb = B.circleRadius || getMarbleSize() / 2;
-                    const minDist = ra + rb;
-
-                    let dx = B.position.x - A.position.x;
-                    let dy = B.position.y - A.position.y;
-                    let distSq = dx * dx + dy * dy;
-                    if (distSq >= minDist * minDist) continue;
-
-                    if (distSq < 0.000001) {
-                        dx = 0.0001;
-                        dy = 0;
-                        distSq = dx * dx;
-                    }
-
-                    const dist = Math.sqrt(distSq);
-                    const overlap = minDist - dist;
-                    const va2 = A.velocity.x * A.velocity.x + A.velocity.y * A.velocity.y;
-                    const vb2 = B.velocity.x * B.velocity.x + B.velocity.y * B.velocity.y;
-                    const bothCalm = va2 < 0.0016 && vb2 < 0.0016;
-                    if (bothCalm) continue;
-                    // Ignore more tiny overlaps when marbles are already calm to prevent micro-jitter.
-                    const overlapSlop = bothCalm
-                        ? (isJarZoomed ? 1.2 : 0.9)
-                        : 0.38;
-                    if (overlap <= overlapSlop) continue;
-                    if (bothCalm && overlap < (isJarZoomed ? 1.7 : 1.35)) continue;
-
-                    const nx = dx / dist;
-                    const ny = dy / dist;
-
-                    const aLocked = !!A._lockedSettled || !!A.isStatic;
-                    const bLocked = !!B._lockedSettled || !!B.isStatic;
-
-                    const maxCorrection = bothCalm
-                        ? (isJarZoomed ? 0.12 : 0.2)
-                        : 1.15;
-                    const correctionFactor = bothCalm
-                        ? (isJarZoomed ? 0.1 : 0.16)
-                        : 0.58;
-                    const correction = Math.min(maxCorrection, (overlap - overlapSlop) * correctionFactor);
-                    let moveA = correction * 0.5;
-                    let moveB = correction * 0.5;
-                    if (aLocked && !bLocked) {
-                        moveA = 0;
-                        moveB = correction;
-                    } else if (!aLocked && bLocked) {
-                        moveA = correction;
-                        moveB = 0;
-                    } else if (aLocked && bLocked) {
-                        moveA = correction * 0.5;
-                        moveB = correction * 0.5;
-                    }
-
-                    Body.setPosition(A, {
-                        x: A.position.x - nx * moveA,
-                        y: A.position.y - ny * moveA
-                    });
-                    Body.setPosition(B, {
-                        x: B.position.x + nx * moveB,
-                        y: B.position.y + ny * moveB
-                    });
-                }
-            }
-        }
-    }
+function nudgeMarbles(vx, vy) {
+    marbleBodies.forEach((marble) => {
+        marble._vx = (marble._vx || 0) + vx;
+        marble._vy = (marble._vy || 0) + vy;
+    });
 }
 
 // Handle collision sounds
@@ -1710,12 +1552,7 @@ function setupShakeInteraction() {
             velocityX = Math.max(-maxVel, Math.min(maxVel, velocityX));
             velocityY = Math.max(-maxVel, Math.min(maxVel, velocityY));
             wakeAllMarbles();
-            marbleBodies.forEach(marble => {
-                Body.applyForce(marble, marble.position, {
-                    x: velocityX * 0.0005,
-                    y: velocityY * 0.0005
-                });
-            });
+            nudgeMarbles(velocityX * 0.08, velocityY * 0.08);
         }
         lastX = pos.x;
         lastY = pos.y;
@@ -1854,12 +1691,7 @@ function setupShakeInteraction() {
         shakeHint.classList.add('hidden');
 
         wakeAllMarbles();
-        marbleBodies.forEach(marble => {
-            Body.applyForce(marble, marble.position, {
-                x: x * 0.0007,
-                y: -y * 0.0006
-            });
-        });
+        nudgeMarbles(x * 0.12, -y * 0.1);
     }
 
     function handleDeviceOrientation(e) {
@@ -2056,11 +1888,248 @@ function getMarbleTextureResolution(displayDiameter) {
     return Math.max(64, Math.round(displayDiameter * dpr * 1.6));
 }
 
+function createMarbleBody(x, y, radius, renderOptions) {
+    const marble = Bodies.circle(x, y, radius, {
+        isStatic: true,
+        restitution: 0.02,
+        friction: 0.02,
+        frictionStatic: 0.05,
+        frictionAir: 0.02,
+        density: 0.0012,
+        slop: 0,
+        sleepThreshold: 18,
+        render: {
+            ...renderOptions,
+            visible: false
+        }
+    });
+
+    marble._spawnFrames = SPAWN_SETTLE_FRAMES;
+    marble._sleepFrames = 0;
+    marble._vx = 0;
+    marble._vy = 0;
+    marble._displayX = x;
+    marble._displayY = y;
+    marble._displayAngle = 0;
+    Body.setVelocity(marble, { x: 0, y: 0 });
+    Body.setAngularVelocity(marble, 0);
+
+    return marble;
+}
+
+function clampDiscToJar(marble, edgeLookup, bounds) {
+    const clampState = computeClampState(marble, edgeLookup, bounds);
+    if (!clampState.corrected) return;
+
+    const prevX = marble.position.x;
+    const prevY = marble.position.y;
+    Body.setPosition(marble, { x: clampState.correctedX, y: clampState.correctedY });
+    marble.positionPrev.x = clampState.correctedX;
+    marble.positionPrev.y = clampState.correctedY;
+
+    if (clampState.correctedX !== prevX) {
+        marble._vx = -((marble._vx || 0) * DISC_BOUNCE);
+    }
+    if (clampState.correctedY !== prevY) {
+        marble._vy = clampState.correctedY < prevY
+            ? -((marble._vy || 0) * DISC_BOUNCE)
+            : Math.max(0, -((marble._vy || 0) * DISC_BOUNCE));
+    }
+}
+
+function resolveDiscPair(A, B) {
+    const ra = A.circleRadius || getMarbleSize() / 2;
+    const rb = B.circleRadius || getMarbleSize() / 2;
+    const minDist = ra + rb + DISC_SEPARATION_EPSILON;
+
+    let dx = B.position.x - A.position.x;
+    let dy = B.position.y - A.position.y;
+    let distSq = dx * dx + dy * dy;
+    if (distSq >= minDist * minDist) return;
+
+    if (distSq < 0.000001) {
+        dx = 0.0001;
+        dy = 0;
+        distSq = dx * dx;
+    }
+
+    const dist = Math.sqrt(distSq);
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const overlap = minDist - dist;
+    const moveX = nx * overlap * 0.5;
+    const moveY = ny * overlap * 0.5;
+
+    Body.setPosition(A, { x: A.position.x - moveX, y: A.position.y - moveY });
+    Body.setPosition(B, { x: B.position.x + moveX, y: B.position.y + moveY });
+    A.positionPrev.x = A.position.x;
+    A.positionPrev.y = A.position.y;
+    B.positionPrev.x = B.position.x;
+    B.positionPrev.y = B.position.y;
+
+    const relVx = (B._vx || 0) - (A._vx || 0);
+    const relVy = (B._vy || 0) - (A._vy || 0);
+    const normalSpeed = relVx * nx + relVy * ny;
+    if (normalSpeed >= 0) return;
+
+    const impulse = -(1 + DISC_PAIR_RESTITUTION) * normalSpeed * 0.5;
+    A._vx -= impulse * nx;
+    A._vy -= impulse * ny;
+    B._vx += impulse * nx;
+    B._vy += impulse * ny;
+}
+
+function updateMarbleDiscPhysics(width, height) {
+    if (marbleBodies.length === 0) return;
+
+    const bounds = getJarBoundaries(width, height);
+    const neck = getJarNeckBounds(width, height);
+    const edgeLookup = getJarEdgeLookup(width, height);
+    const gx = (engine?.gravity?.x || 0) * DISC_GRAVITY_SCALE;
+    const gy = (engine?.gravity?.y || 0.95) * DISC_GRAVITY_SCALE;
+
+    marbleBodies.forEach((marble) => {
+        dampMarbleMotion(marble);
+        marble._vx = (marble._vx || 0) + gx;
+        marble._vy = (marble._vy || 0) + gy;
+        marble._vx *= DISC_AIR_DAMPING;
+        marble._vy *= DISC_AIR_DAMPING;
+
+        const nextX = marble.position.x + marble._vx;
+        const nextY = marble.position.y + marble._vy;
+        Body.setPosition(marble, { x: nextX, y: nextY });
+        marble.positionPrev.x = nextX;
+        marble.positionPrev.y = nextY;
+        clampDiscToJar(marble, edgeLookup, bounds);
+
+        if (isMarbleEscaped(marble.position, bounds)) {
+            respawnEscapedMarble(marble, neck, bounds);
+            marble._vx = 0;
+            marble._vy = 0;
+        }
+    });
+
+    for (let pass = 0; pass < DISC_PAIR_PASSES; pass += 1) {
+        for (let i = 0; i < marbleBodies.length; i += 1) {
+            for (let j = i + 1; j < marbleBodies.length; j += 1) {
+                resolveDiscPair(marbleBodies[i], marbleBodies[j]);
+            }
+        }
+        marbleBodies.forEach((marble) => clampDiscToJar(marble, edgeLookup, bounds));
+    }
+
+    marbleBodies.forEach((marble) => {
+        const speed = Math.hypot(marble._vx || 0, marble._vy || 0);
+        if (speed < CALM_LINEAR_SPEED) {
+            marble._sleepFrames = (marble._sleepFrames || 0) + 1;
+            if (marble._sleepFrames > 6) {
+                marble._vx = 0;
+                marble._vy = 0;
+            }
+        } else {
+            marble._sleepFrames = 0;
+        }
+    });
+}
+
+function updateMarbleDisplayState(body) {
+    if (typeof body._displayX !== 'number' || typeof body._displayY !== 'number') {
+        body._displayX = body.position.x;
+        body._displayY = body.position.y;
+        body._displayAngle = body.angle || 0;
+        return;
+    }
+
+    const dx = body.position.x - body._displayX;
+    const dy = body.position.y - body._displayY;
+    const da = (body.angle || 0) - (body._displayAngle || 0);
+    const speed = Math.hypot(body._vx || 0, body._vy || 0);
+    const angularSpeed = 0;
+    const isFresh = (body._spawnFrames || 0) > 0;
+    const lerp = isFresh ? DISPLAY_LERP_FRESH : DISPLAY_LERP;
+
+    if (
+        speed < CALM_LINEAR_SPEED &&
+        Math.abs(dx) < DISPLAY_SNAP_DISTANCE &&
+        Math.abs(dy) < DISPLAY_SNAP_DISTANCE &&
+        Math.abs(da) < DISPLAY_SNAP_ANGLE
+    ) {
+        body._displayX = body.position.x;
+        body._displayY = body.position.y;
+        body._displayAngle = body.angle || 0;
+        return;
+    }
+
+    body._displayX += dx * lerp;
+    body._displayY += dy * lerp;
+    body._displayAngle = (body._displayAngle || 0) + da * lerp;
+}
+
+function drawJarMarble(ctx, body) {
+    const x = body._displayX;
+    const y = body._displayY;
+    const r = Math.max(2, body.circleRadius || getMarbleSize() / 2);
+    const config = collectibles[body.marbleType];
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(body._displayAngle || 0);
+
+    if (config?.isMarble) {
+        const base = body.marbleColor || '#1AA39D';
+        const grad = ctx.createRadialGradient(-r * 0.32, -r * 0.28, 0, 0, 0, r);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.15, lightenColor(base, 40));
+        grad.addColorStop(0.5, base);
+        grad.addColorStop(1, darkenColor(base, 30));
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        const shine = ctx.createRadialGradient(-r * 0.45, -r * 0.4, 0, -r * 0.45, -r * 0.4, r * 0.45);
+        shine.addColorStop(0, 'rgba(255,255,255,0.85)');
+        shine.addColorStop(0.55, 'rgba(255,255,255,0.22)');
+        shine.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = shine;
+        ctx.beginPath();
+        ctx.arc(-r * 0.22, -r * 0.18, r * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+    } else {
+        const img = getJarInspectImage(body.marbleImage);
+        if (img) {
+            ctx.drawImage(img, -r, -r, r * 2, r * 2);
+        } else {
+            ctx.fillStyle = body.marbleColor || '#1AA39D';
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    ctx.restore();
+}
+
+function renderJarMarbles(ctx, width, height) {
+    ctx.save();
+    ctx.beginPath();
+    traceJarCanvasPath(ctx, width, height);
+    ctx.clip();
+
+    const sortedBodies = [...marbleBodies].sort((a, b) => a.position.y - b.position.y);
+    sortedBodies.forEach((body) => {
+        updateMarbleDisplayState(body);
+        drawJarMarble(ctx, body);
+    });
+
+    ctx.restore();
+}
+
 function findLeastOverlapSpawn(radius, bounds, neck, options = {}) {
-    const tries = options.tries || 28;
-    const topOffset = options.topOffset || 16;
-    const depthJitter = options.depthJitter || 20;
-    const maxDepth = options.maxDepth || 130;
+    const tries = options.tries || 40;
+    const topOffset = options.topOffset || 14;
+    const depthJitter = options.depthJitter || 12;
+    const maxDepth = options.maxDepth || 90;
     const lateralPadding = 12;
 
     const safeNeckWidth = Math.max(1, neck.right - neck.left - lateralPadding * 2);
@@ -2081,7 +2150,7 @@ function findLeastOverlapSpawn(radius, bounds, neck, options = {}) {
         for (let i = 0; i < marbleBodies.length; i += 1) {
             const other = marbleBodies[i];
             const or = other.circleRadius || radius;
-            const minDist = radius + or + 1.2;
+            const minDist = radius + or + 3;
             const dx = x - other.position.x;
             const dy = y - other.position.y;
             const dist = Math.hypot(dx, dy);
@@ -2121,8 +2190,13 @@ function addMarble(type, options = {}) {
     const bounds = getJarBoundaries(width, height);
     const neck = getJarNeckBounds(width, height);
     
-    // Start position (drop from inside jar, below the lid) with overlap-aware placement.
-    const spawn = findLeastOverlapSpawn(radius, bounds, neck, { tries: 30, topOffset: 14, maxDepth: 120 });
+    // Start near the neck with conservative non-overlap spacing.
+    const spawn = findLeastOverlapSpawn(radius, bounds, neck, {
+        tries: 60,
+        topOffset: 10,
+        depthJitter: 8,
+        maxDepth: 64
+    });
     const x = spawn.x;
     const y = spawn.y;
     
@@ -2159,16 +2233,7 @@ function addMarble(type, options = {}) {
         };
     }
     
-    const marble = Bodies.circle(x, y, radius, {
-        restitution: 0.26,
-        friction: 0.03,
-        frictionStatic: 0.01,
-        frictionAir: 0.008,
-        density: 0.001,
-        slop: 0.01,
-        sleepThreshold: 25,
-        render: renderOptions
-    });
+    const marble = createMarbleBody(x, y, radius, renderOptions);
     
     marble.marbleType = type;
     marble.marbleImage = imageUrl;
@@ -2177,7 +2242,6 @@ function addMarble(type, options = {}) {
     marble._spriteBaseSize = config.isMarble
         ? getMarbleTextureResolution(radius * 2)
         : 128;
-    
     Composite.add(engine.world, marble);
     marbleBodies.push(marble);
     
@@ -2276,10 +2340,10 @@ function restoreMarbles() {
         const timerId = setTimeout(() => {
             const radius = currentSize / 2;
             const spawn = findLeastOverlapSpawn(radius, bounds, neck, {
-                tries: 36,
-                topOffset: 18,
-                depthJitter: 16,
-                maxDepth: 150
+                tries: 48,
+                topOffset: 12,
+                depthJitter: 10,
+                maxDepth: 96
             });
             const x = spawn.x;
             const y = spawn.y;
@@ -2317,15 +2381,7 @@ function restoreMarbles() {
                 }
             }
             
-            const marble = Bodies.circle(x, y, radius, {
-                restitution: 0.18,
-                friction: 0.05,
-                frictionStatic: 0.01,
-                frictionAir: 0.008,
-                density: 0.001,
-                sleepThreshold: 25,
-                render: renderOptions
-            });
+            const marble = createMarbleBody(x, y, radius, renderOptions);
             
             marble.marbleType = marbleData.type;
             marble.marbleImage = marbleData.imageUrl;

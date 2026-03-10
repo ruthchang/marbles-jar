@@ -375,7 +375,7 @@ header h1 {
 }
 
 .jar-stats {
-    margin-top: 22px;
+    margin-top: 12px;
     font-size: 1.2rem;
     font-weight: 600;
     color: var(--text-secondary);
@@ -1114,10 +1114,6 @@ body.jar-only-mode .menu-backdrop {
     color: inherit;
 }
 
-.collectible-option.active .collectible-option-icon {
-    box-shadow: 0 0 0 2px rgba(26, 163, 157, 0.55), 0 3px 8px rgba(26, 163, 157, 0.2);
-}
-
 .collectible-option.premium-locked {
     position: relative;
     opacity: 0.3;
@@ -1130,10 +1126,8 @@ body.jar-only-mode .menu-backdrop {
 }
 
 .collectible-option.premium-locked .collectible-option-checkbox {
-    accent-color: #b8c0c4;
-    opacity: 0.55;
-    filter: grayscale(1);
-    cursor: not-allowed;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .collectible-option.premium-locked::after {
@@ -1144,6 +1138,8 @@ body.jar-only-mode .menu-backdrop {
     transform: translateX(-50%);
     font-size: 0.55rem;
     line-height: 1;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
     color: #fff;
     background: rgba(45, 52, 54, 0.85);
     padding: 2px 4px;
@@ -1515,6 +1511,25 @@ body.jar-only-mode .menu-backdrop {
     overflow-wrap: anywhere;
 }
 
+.sound-option-radio {
+    width: 16px;
+    height: 16px;
+    margin: 0 0 2px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.sound-option-radio.free-theme-radio {
+    accent-color: #9aa5a4;
+}
+
+.sound-option-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
 .sound-option-icon {
     width: 28px;
     height: 28px;
@@ -1529,11 +1544,6 @@ body.jar-only-mode .menu-backdrop {
     color: var(--accent-hover);
 }
 
-.sound-option.active .sound-option-icon {
-    border-radius: 50%;
-    box-shadow: 0 0 0 2px rgba(26, 163, 157, 0.55), 0 3px 8px rgba(26, 163, 157, 0.2);
-}
-
 .sound-option.premium-locked {
     position: relative;
     opacity: 0.3;
@@ -1545,6 +1555,11 @@ body.jar-only-mode .menu-backdrop {
     transform: none;
 }
 
+.sound-option.premium-locked .sound-option-radio {
+    visibility: hidden;
+    pointer-events: none;
+}
+
 .sound-option.premium-locked::after {
     content: 'Premium';
     position: absolute;
@@ -1553,6 +1568,8 @@ body.jar-only-mode .menu-backdrop {
     transform: translateX(-50%);
     font-size: 0.55rem;
     line-height: 1;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
     color: #fff;
     background: rgba(45, 52, 54, 0.85);
     padding: 2px 4px;
