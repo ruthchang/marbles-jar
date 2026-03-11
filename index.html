@@ -112,11 +112,14 @@
                     <h3>Data</h3>
                     <div class="settings-inline-row">
                         <label for="settingsCapacityInput" class="settings-inline-label">Jar capacity</label>
-                        <div class="settings-inline-controls settings-capacity-controls">
-                            <button type="button" class="settings-inline-btn secondary" id="settingsCapacityDownBtn" aria-label="Decrease jar capacity">-</button>
-                            <input type="number" id="settingsCapacityInput" min="10" max="500" step="1" value="100">
-                            <button type="button" class="settings-inline-btn secondary" id="settingsCapacityUpBtn" aria-label="Increase jar capacity">+</button>
-                            <button type="button" class="settings-inline-btn" id="settingsApplyCapacityBtn">Apply</button>
+                        <div class="settings-capacity-controls">
+                            <div class="settings-inline-controls settings-capacity-slider-row">
+                                <span class="settings-capacity-bound">10</span>
+                                <input type="range" id="settingsCapacitySlider" min="10" max="500" step="1" value="100" aria-label="Jar capacity slider">
+                                <span class="settings-capacity-bound">500</span>
+                                <input type="number" id="settingsCapacityInput" min="10" max="500" step="1" value="100">
+                                <button type="button" class="settings-inline-btn" id="settingsApplyCapacityBtn">Apply</button>
+                            </div>
                         </div>
                     </div>
                     <div class="settings-inline-row">

@@ -95,6 +95,7 @@ const JAR_CLASS = 'jar-classic';
 const IS_PREMIUM_BUILD = false;
 const FREE_COLLECTIBLE_TYPE = 'marble';
 const FREE_SOUND_THEME = 'glass';
+const JAR_CAPACITY_SLIDER_STOPS = [10, 100, 200, 300, 400, 500];
 const PREMIUM_PRODUCT_ID = 'com.marblejar.premium_unlock';
 const PREMIUM_PRICE_LABEL = '$1.00';
 const PREMIUM_STORAGE_KEY = 'marbleJarPremiumUnlocked';
@@ -980,6 +981,21 @@ function clampJarCapacity(value) {
     const n = Math.floor(Number(value));
     if (!Number.isFinite(n)) return DEFAULT_JAR_CAPACITY;
     return Math.max(MIN_JAR_CAPACITY, Math.min(MAX_JAR_CAPACITY, n));
+}
+
+function snapJarCapacitySliderValue(value) {
+    const numeric = clampJarCapacity(value);
+    let best = JAR_CAPACITY_SLIDER_STOPS[0];
+    let bestDistance = Math.abs(numeric - best);
+    for (let i = 1; i < JAR_CAPACITY_SLIDER_STOPS.length; i += 1) {
+        const stop = JAR_CAPACITY_SLIDER_STOPS[i];
+        const distance = Math.abs(numeric - stop);
+        if (distance < bestDistance) {
+            best = stop;
+            bestDistance = distance;
+        }
+    }
+    return best;
 }
 
 function getMarbleVariantIndexByData(type, itemName, fallbackColor, imageUrl) {
@@ -2550,6 +2566,8 @@ function updateMarbleCount() {
     }
     const capacityInput = document.getElementById('settingsCapacityInput');
     if (capacityInput) capacityInput.value = String(state.jarCapacity);
+    const capacitySlider = document.getElementById('settingsCapacitySlider');
+    if (capacitySlider) capacitySlider.value = String(state.jarCapacity);
 }
 
 function closeConfirmDialog(result) {
@@ -2942,9 +2960,8 @@ function setupEventListeners() {
     const applyCountBtn = document.getElementById('settingsApplyCountBtn');
     const countInput = document.getElementById('settingsMarbleCountInput');
     const capacityInput = document.getElementById('settingsCapacityInput');
+    const capacitySlider = document.getElementById('settingsCapacitySlider');
     const applyCapacityBtn = document.getElementById('settingsApplyCapacityBtn');
-    const capacityDownBtn = document.getElementById('settingsCapacityDownBtn');
-    const capacityUpBtn = document.getElementById('settingsCapacityUpBtn');
     applyCountBtn?.addEventListener('click', () => {
         const value = Number(countInput?.value);
         setMarbleCount(value);
@@ -2960,18 +2977,23 @@ function setupEventListeners() {
         const value = Number(capacityInput?.value);
         setJarCapacity(value);
     });
+    capacitySlider?.addEventListener('input', () => {
+        const snapped = snapJarCapacitySliderValue(Number(capacitySlider.value));
+        capacitySlider.value = String(snapped);
+        if (capacityInput) capacityInput.value = String(snapped);
+    });
+    capacityInput?.addEventListener('input', () => {
+        const rawValue = Number(capacityInput.value || state.jarCapacity);
+        const value = clampJarCapacity(rawValue);
+        capacityInput.value = String(value);
+        if (capacitySlider) capacitySlider.value = String(value);
+    });
     capacityInput?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             const value = Number(capacityInput.value);
             setJarCapacity(value);
         }
-    });
-    capacityDownBtn?.addEventListener('click', () => {
-        setJarCapacity(state.jarCapacity - 1);
-    });
-    capacityUpBtn?.addEventListener('click', () => {
-        setJarCapacity(state.jarCapacity + 1);
     });
     document.getElementById('undoMarbleBtn')?.addEventListener('click', undoLastMarble);
     document.getElementById('zoomJarBtn')?.addEventListener('click', toggleJarZoom);
@@ -3081,6 +3103,8 @@ function openSettings() {
     if (countInput) countInput.value = String(state.totalMarbles);
     const capacityInput = document.getElementById('settingsCapacityInput');
     if (capacityInput) capacityInput.value = String(state.jarCapacity);
+    const capacitySlider = document.getElementById('settingsCapacitySlider');
+    if (capacitySlider) capacitySlider.value = String(state.jarCapacity);
 }
 
 // Close settings page
