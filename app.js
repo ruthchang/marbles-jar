@@ -355,11 +355,13 @@ const JAR_SHAPE = {
     shoulderLeft: 0.139024,
     shoulderRight: 0.860976,
     shoulderY: 0.30836,
+    shoulderHandleInY: 0.26,
+    shoulderHandleOutY: 0.45,
     bodyLeft: 0.139024,
     bodyRight: 0.860976,
-    sideBottomY: 0.865,
-    bottomLeft: 0.232878,
-    bottomRight: 0.767122,
+    sideBottomY: 0.78,
+    bottomLeft: 0.29,
+    bottomRight: 0.71,
     bottomCurveY: 0.962
 };
 
@@ -568,13 +570,13 @@ function getJarGeometry(width, height) {
     const shoulderDelta = Math.max(0.03, JAR_SHAPE.shoulderY - JAR_SHAPE.neckBottom);
     const shoulderC1Y = JAR_SHAPE.neckBottom + shoulderDelta * (0.26 + 0.18 * roundness);
     const shoulderC2Y = JAR_SHAPE.neckBottom + shoulderDelta * (0.68 + 0.26 * roundness);
-    const shoulderC1X = JAR_SHAPE.neckLeft - (0.0005 + 0.004 * roundness);
+    const shoulderC1X = JAR_SHAPE.neckLeft - (0.03 + 0.04 * roundness);
     const shoulderC2X = JAR_SHAPE.shoulderLeft;
     const sideBow = 0;
-    const lowerY1 = JAR_SHAPE.sideBottomY + (JAR_SHAPE.bottomCurveY - JAR_SHAPE.sideBottomY) * 0.40;
-    const lowerY2 = JAR_SHAPE.sideBottomY + (JAR_SHAPE.bottomCurveY - JAR_SHAPE.sideBottomY) * 0.9;
-    const lowerX1 = JAR_SHAPE.bodyLeft + (JAR_SHAPE.bottomLeft - JAR_SHAPE.bodyLeft) * 0.10;
-    const lowerX2 = JAR_SHAPE.bodyLeft + (JAR_SHAPE.bottomLeft - JAR_SHAPE.bodyLeft) * 0.70;
+    const lowerY1 = JAR_SHAPE.sideBottomY + (JAR_SHAPE.bottomCurveY - JAR_SHAPE.sideBottomY) * 0.55;
+    const lowerY2 = JAR_SHAPE.sideBottomY + (JAR_SHAPE.bottomCurveY - JAR_SHAPE.sideBottomY) * 0.98;
+    const lowerX1 = JAR_SHAPE.bodyLeft + (JAR_SHAPE.bottomLeft - JAR_SHAPE.bodyLeft) * 0.0;
+    const lowerX2 = JAR_SHAPE.bodyLeft + (JAR_SHAPE.bottomLeft - JAR_SHAPE.bodyLeft) * 0.45;
     return {
         neckLeftX: px(JAR_SHAPE.neckLeft),
         neckRightX: px(JAR_SHAPE.neckRight),
@@ -591,22 +593,22 @@ function getJarGeometry(width, height) {
         bottomCurveY: py(JAR_SHAPE.bottomCurveY),
         leftShoulderC1X: px(shoulderC1X),
         leftShoulderC1Y: py(shoulderC1Y),
-        leftShoulderC2X: px(shoulderC2X),
-        leftShoulderC2Y: py(shoulderC2Y),
-        leftBodyC1X: px(JAR_SHAPE.bodyLeft - sideBow),
-        leftBodyC1Y: py(JAR_SHAPE.shoulderY + (JAR_SHAPE.sideBottomY - JAR_SHAPE.shoulderY) * 0.38),
+        leftShoulderC2X: px(JAR_SHAPE.shoulderLeft),
+        leftShoulderC2Y: py(JAR_SHAPE.shoulderHandleInY),
+        leftBodyC1X: px(JAR_SHAPE.bodyLeft),
+        leftBodyC1Y: py(JAR_SHAPE.shoulderHandleOutY),
         leftBodyC2X: px(JAR_SHAPE.bodyLeft - sideBow * 0.6),
         leftBodyC2Y: py(JAR_SHAPE.shoulderY + (JAR_SHAPE.sideBottomY - JAR_SHAPE.shoulderY) * 0.78),
         leftLowerC1X: px(lowerX1),
         leftLowerC1Y: py(lowerY1),
         leftLowerC2X: px(lowerX2),
         leftLowerC2Y: py(lowerY2),
-        rightShoulderC1X: px(1 - shoulderC2X),
-        rightShoulderC1Y: py(shoulderC2Y),
+        rightShoulderC1X: px(JAR_SHAPE.shoulderRight),
+        rightShoulderC1Y: py(JAR_SHAPE.shoulderHandleInY),
         rightShoulderC2X: px(1 - shoulderC1X),
         rightShoulderC2Y: py(shoulderC1Y),
-        rightBodyC1X: px(JAR_SHAPE.bodyRight + sideBow),
-        rightBodyC1Y: py(JAR_SHAPE.shoulderY + (JAR_SHAPE.sideBottomY - JAR_SHAPE.shoulderY) * 0.38),
+        rightBodyC1X: px(JAR_SHAPE.bodyRight),
+        rightBodyC1Y: py(JAR_SHAPE.shoulderHandleOutY),
         rightBodyC2X: px(JAR_SHAPE.bodyRight + sideBow * 0.6),
         rightBodyC2Y: py(JAR_SHAPE.shoulderY + (JAR_SHAPE.sideBottomY - JAR_SHAPE.shoulderY) * 0.78),
         rightLowerC1X: px(1 - lowerX1),
@@ -802,6 +804,9 @@ function updateJarSvgPaths() {
     const mouthWidthPct = (JAR_SHAPE.neckRight - JAR_SHAPE.neckLeft) * 100;
     const lidWidth = Math.max(38, Math.min(72, mouthWidthPct + 8));
     container.style.setProperty('--lid-width', `${lidWidth}%`);
+
+    const existingDebug = container.querySelector('.jar-debug-points');
+    if (existingDebug) existingDebug.remove();
 }
 
 // Get collectible size from jar geometry, tuned so ~100 pieces fill near the top.
@@ -1612,7 +1617,7 @@ function setupShakeInteraction() {
             velocityY = Math.max(-maxVel, Math.min(maxVel, velocityY));
             flingVX = velocityX;
             flingVY = velocityY;
-            nudgeMarbles(velocityX * 0.03, velocityY * 0.03);
+            nudgeMarbles(velocityX * 0.07, velocityY * 0.07);
         }
         lastX = pos.x;
         lastY = pos.y;
