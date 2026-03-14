@@ -340,8 +340,8 @@ const DISPLAY_LERP = 0.26;
 const DISPLAY_LERP_FRESH = 0.34;
 const DISPLAY_SNAP_DISTANCE = 0.3;
 const DISPLAY_SNAP_ANGLE = 0.02;
-const DISC_GRAVITY_SCALE = 0.28;
-const DISC_AIR_DAMPING = 0.992;
+const DISC_GRAVITY_SCALE = 0.52;
+const DISC_AIR_DAMPING = 0.91;
 const DISC_BOUNCE = 0.04;
 const DISC_PAIR_RESTITUTION = 0.02;
 const DISC_PAIR_PASSES = 6;
@@ -1485,7 +1485,7 @@ function getAudioNow() {
 }
 
 function maybePlayGlassCollisionSound(marble, impactSpeed) {
-    if (impactSpeed < 1.2) return;
+    if (impactSpeed < 2.5) return;
     const now = getAudioNow();
     if (now - (marble._lastGlassSoundAt || 0) < 140) return;
     marble._lastGlassSoundAt = now;
@@ -1493,7 +1493,7 @@ function maybePlayGlassCollisionSound(marble, impactSpeed) {
 }
 
 function maybePlayMarbleCollisionSound(A, B, impactSpeed) {
-    if (impactSpeed < 1.05) return;
+    if (impactSpeed < 2.0) return;
     const aId = A._audioId || 0;
     const bId = B._audioId || 0;
     const pairKey = aId < bId ? `${aId}:${bId}` : `${bId}:${aId}`;
@@ -1562,6 +1562,14 @@ function setupShakeInteraction() {
 
     const container = document.getElementById('jarContainer');
     const shakeHint = document.getElementById('shakeHint');
+    const tapLidHint = document.getElementById('tapLidHint');
+    const dragHint = document.getElementById('dragHint');
+    function dismissHint(el) {
+        if (!el || el.style.display === 'none') return;
+        el.style.transition = 'opacity 0.3s ease';
+        el.style.opacity = '0';
+        setTimeout(() => { el.style.display = 'none'; updateHintSeparators(); }, 300);
+    }
     let isDragging = false;
     let hasMoved = false;
     let dragStartTime = 0;
@@ -1605,7 +1613,7 @@ function setupShakeInteraction() {
         const dy = pos.y - lastY;
         if (!hasMoved && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
             hasMoved = true;
-            shakeHint.classList.add('hidden');
+            dismissHint(dragHint);
             suppressJarClickUntil = Date.now() + 250;
             wakeAllMarbles();
         }
@@ -1617,7 +1625,7 @@ function setupShakeInteraction() {
             velocityY = Math.max(-maxVel, Math.min(maxVel, velocityY));
             flingVX = velocityX;
             flingVY = velocityY;
-            nudgeMarbles(velocityX * 0.07, velocityY * 0.07);
+            nudgeMarbles(velocityX * 0.25, velocityY * 0.25);
         }
         lastX = pos.x;
         lastY = pos.y;
@@ -1639,7 +1647,7 @@ function setupShakeInteraction() {
                 }
                 lastLidTapAt = now;
                 addMarble();
-                shakeHint.classList.add('hidden');
+                dismissHint(tapLidHint);
             }
         } else if (hasMoved) {
             wakeAllMarbles();
@@ -2576,6 +2584,17 @@ function playAddSound() {
     oscillator.stop(audioCtx.currentTime + 0.4);
 }
 
+function updateHintSeparators() {
+    const sep1 = document.getElementById('hintSep1');
+    const sep2 = document.getElementById('hintSep2');
+    const tapEl = document.getElementById('tapLidHint');
+    const dragEl = document.getElementById('dragHint');
+    const zoomEl = document.getElementById('zoomHintSlot');
+    const vis = (el) => el && el.style.display !== 'none';
+    if (sep1) sep1.style.display = (vis(tapEl) && (vis(dragEl) || vis(zoomEl))) ? '' : 'none';
+    if (sep2) sep2.style.display = (vis(dragEl) && vis(zoomEl)) ? '' : 'none';
+}
+
 // Update marble count display
 function updateMarbleCount() {
     document.getElementById('marbleCount').textContent = state.totalMarbles;
@@ -2585,10 +2604,17 @@ function updateMarbleCount() {
     }
     const undoBtn = document.getElementById('undoMarbleBtn');
     if (undoBtn) undoBtn.disabled = state.totalMarbles === 0;
-    const shakeHint = document.getElementById('shakeHint');
-    if (shakeHint) {
-        shakeHint.classList.toggle('hidden-empty', state.totalMarbles === 0);
+    const tapLidHintEl = document.getElementById('tapLidHint');
+    const dragHintEl = document.getElementById('dragHint');
+    const zoomHintSlotEl = document.getElementById('zoomHintSlot');
+    if (state.totalMarbles === 0) {
+        if (tapLidHintEl) { tapLidHintEl.style.display = ''; tapLidHintEl.style.opacity = '1'; }
+        if (dragHintEl) { dragHintEl.style.display = 'none'; }
+        if (zoomHintSlotEl) { zoomHintSlotEl.style.display = ''; zoomHintSlotEl.style.opacity = '1'; }
+    } else {
+        if (dragHintEl) { dragHintEl.style.display = ''; dragHintEl.style.opacity = '1'; }
     }
+    updateHintSeparators();
     positionZoomButtonByHintVisibility();
     const countInput = document.getElementById('settingsMarbleCountInput');
     if (countInput) {
@@ -2831,14 +2857,14 @@ function renderJarInspectFrame() {
 
     const sortedBodies = [...marbleBodies].sort((a, b) => a.position.y - b.position.y);
     sortedBodies.forEach((body) => {
-        const x = body.position.x;
-        const y = body.position.y;
+        const x = typeof body._displayX === 'number' ? body._displayX : body.position.x;
+        const y = typeof body._displayY === 'number' ? body._displayY : body.position.y;
         const r = Math.max(2, body.circleRadius || getMarbleSize() / 2);
         const config = collectibles[body.marbleType];
 
         ctx.save();
         ctx.translate(x, y);
-        ctx.rotate(body.angle || 0);
+        ctx.rotate(body._displayAngle || body.angle || 0);
 
         if (config?.isMarble && body.marbleImage) {
             const img = getJarInspectImage(body.marbleImage);

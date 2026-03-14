@@ -17,7 +17,7 @@
         <header>
             <h1>Marble Jar</h1>
             <div class="subtitle-row">
-                <p class="subtitle">Tap the lid to add a marble</p>
+                <p class="subtitle" style="font-size:1.2rem;font-weight:600;color:var(--text-secondary)"><span id="marbleCount" style="color:var(--accent);font-size:1.5rem">0</span> <span id="marbleCountLabel" style="color:var(--accent);font-size:1.5rem">marbles collected</span></p>
                 <button type="button" class="undo-marble-btn header-undo-btn" id="undoMarbleBtn" title="Undo last marble" aria-label="Undo last marble"><img class="undo-btn-icon" src="https://cdn-icons-png.flaticon.com/128/1694/1694021.png" alt=""></button>
             </div>
         </header>
@@ -37,16 +37,15 @@
                         <div class="jar-lid"></div>
                     </div>
                     <div class="shake-hint" id="shakeHint">
-                        <span class="shake-hint-text"><img class="shake-hint-icon" src="https://cdn-icons-png.flaticon.com/128/456/456291.png" alt=""> Drag</span>
+                        <span id="tapLidHint"><span class="shake-hint-text">Tap lid to add</span></span><span class="hint-sep" id="hintSep1">·</span>
+                        <span id="dragHint"><span class="shake-hint-text"><img class="shake-hint-icon" src="https://cdn-icons-png.flaticon.com/128/456/456291.png" alt=""> Drag</span></span><span class="hint-sep" id="hintSep2">·</span>
                         <span class="zoom-hint-slot" id="zoomHintSlot">
                             <button type="button" class="zoom-jar-btn" id="zoomJarBtn" title="Zoom in jar" aria-label="Zoom in jar" aria-pressed="false">Zoom In</button>
                         </span>
                     </div>
                 </div>
                 <div class="zoom-center-row" id="zoomCenterSlot"></div>
-                <div class="jar-stats">
-                    <span id="marbleCount">0</span> <span id="marbleCountLabel">marbles collected</span>
-                </div>
+
                 <div class="menu-dock" id="frontControls">
                     <button type="button" class="menu-toggle-btn" id="menuToggleBtn" aria-expanded="false" aria-controls="frontMenu">Menu</button>
                 </div>

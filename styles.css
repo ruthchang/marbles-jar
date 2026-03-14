@@ -45,7 +45,7 @@ body {
 
 header, footer {
     text-align: center;
-    padding: 20px 0 30px;
+    padding: 20px 0 8px;
 }
 
 header h1 {
@@ -319,12 +319,12 @@ header h1 {
 
 .shake-hint {
     position: absolute;
-    bottom: -25px;
+    bottom: -30px;
     left: 50%;
     transform: translateX(-50%);
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     background: transparent;
     padding: 0;
     border-radius: 0;
@@ -336,6 +336,13 @@ header h1 {
     transition: opacity 0.3s ease;
     z-index: 10;
     white-space: nowrap;
+}
+
+.hint-sep {
+    font-size: 1.6rem;
+    padding: 0 6px;
+    color: rgba(45, 52, 54, 0.4);
+    line-height: 1;
 }
 
 .shake-hint.hidden {
@@ -1960,6 +1967,7 @@ body.jar-only-mode .menu-backdrop {
 
 .settings-inline-controls {
     display: flex;
+    align-items: center;
     gap: 8px;
 }
 
@@ -2055,7 +2063,8 @@ body.jar-only-mode .menu-backdrop {
     color: #0f6f6a;
 }
 
-.settings-inline-controls .settings-inline-btn {
+.settings-inline-controls .settings-inline-btn,
+.settings-capacity-slider-row .settings-inline-btn {
     flex: 0 0 62px;
     min-width: 62px;
 }
