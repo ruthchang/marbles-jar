@@ -96,7 +96,7 @@ const IS_PREMIUM_BUILD = false;
 const FREE_COLLECTIBLE_TYPE = 'marble';
 const FREE_SOUND_THEME = 'glass';
 const JAR_CAPACITY_SLIDER_STOPS = [10, 100, 200, 300, 400, 500];
-const PREMIUM_PRODUCT_ID = 'com.marblejar.premium_unlock';
+const PREMIUM_PRODUCT_ID = 'com.ickleruthiekins.marblejar.premium';
 const PREMIUM_PRICE_LABEL = '$1.00';
 const PREMIUM_STORAGE_KEY = 'marbleJarPremiumUnlocked';
 
@@ -118,11 +118,6 @@ function isSyncEnabled() {
     return isPremiumMode();
 }
 
-function getPremiumIapBridge() {
-    if (window.Capacitor?.Plugins?.PremiumIAP) return window.Capacitor.Plugins.PremiumIAP;
-    if (window.PremiumIAP) return window.PremiumIAP;
-    return null;
-}
 
 
 function setPremiumUnlocked(nextValue) {
@@ -142,41 +137,13 @@ async function refreshPremiumEntitlement() {
         console.warn('Failed to read stored premium entitlement:', e);
     }
 
-    let bridgePremium = false;
-    const bridge = getPremiumIapBridge();
-    if (bridge) {
-        try {
-            if (typeof bridge.getEntitlementStatus === 'function') {
-                const result = await bridge.getEntitlementStatus({ productId: PREMIUM_PRODUCT_ID });
-                bridgePremium = !!(result?.isPremium || result?.entitled || result?.active);
-            } else if (typeof bridge.isPremiumUnlocked === 'function') {
-                const result = await bridge.isPremiumUnlocked({ productId: PREMIUM_PRODUCT_ID });
-                bridgePremium = !!(result?.isPremium || result?.entitled || result?.active);
-            }
-        } catch (e) {
-            console.warn('Failed to read premium entitlement from native bridge:', e);
-        }
-    }
-
-    setPremiumUnlocked(localPremium || bridgePremium || IS_PREMIUM_BUILD);
+    const rcPremium = await rcGetPremiumStatus();
+    setPremiumUnlocked(localPremium || rcPremium || IS_PREMIUM_BUILD);
 }
 
 async function purchasePremiumUnlock() {
-    const bridge = getPremiumIapBridge();
-    if (!bridge) {
-        alert('In-app purchase is available in the iOS app build.');
-        return;
-    }
-
     try {
-        if (typeof bridge.purchasePremium === 'function') {
-            await bridge.purchasePremium({ productId: PREMIUM_PRODUCT_ID });
-        } else if (typeof bridge.purchase === 'function') {
-            await bridge.purchase({ productId: PREMIUM_PRODUCT_ID });
-        } else {
-            alert('Purchase bridge is not configured yet.');
-            return;
-        }
+        await rcPurchasePremium();
         await refreshPremiumEntitlement();
         enforcePlanRestrictions();
         saveState();
@@ -185,31 +152,15 @@ async function purchasePremiumUnlock() {
         renderSoundSettings();
         renderSyncUI();
         updateMarbleCount();
-        if (isPremiumMode()) {
-            alert('Premium unlocked.');
-        }
+        if (isPremiumMode()) alert('Premium unlocked!');
     } catch (e) {
-        const message = e?.message || 'Purchase was not completed.';
-        alert(message);
+        alert(e?.message || 'Purchase was not completed.');
     }
 }
 
 async function restorePremiumPurchases() {
-    const bridge = getPremiumIapBridge();
-    if (!bridge) {
-        alert('Restore is available in the iOS app build.');
-        return;
-    }
-
     try {
-        if (typeof bridge.restorePurchases === 'function') {
-            await bridge.restorePurchases({ productId: PREMIUM_PRODUCT_ID });
-        } else if (typeof bridge.restore === 'function') {
-            await bridge.restore({ productId: PREMIUM_PRODUCT_ID });
-        } else {
-            alert('Restore bridge is not configured yet.');
-            return;
-        }
+        await rcRestorePurchases();
         await refreshPremiumEntitlement();
         enforcePlanRestrictions();
         saveState();
@@ -221,11 +172,10 @@ async function restorePremiumPurchases() {
         if (isPremiumMode()) {
             alert('Purchases restored. Premium is active.');
         } else {
-            alert('No premium purchase was found for this Apple ID.');
+            alert('No premium purchase found for this Apple ID.');
         }
     } catch (e) {
-        const message = e?.message || 'Restore failed.';
-        alert(message);
+        alert(e?.message || 'Restore failed.');
     }
 }
 
@@ -504,6 +454,7 @@ function onSyncAuthChange(signedIn, user) {
 // Initialize the app
 async function init() {
     preloadImages();
+    await rcInit();
     await refreshPremiumEntitlement();
     loadState();
     if (isSyncEnabled() && typeof Sync !== 'undefined' && Sync.isConfigured && Sync.isConfigured()) {
