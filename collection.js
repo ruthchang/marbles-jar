@@ -88,7 +88,7 @@ function setupCollectibleDetailModal() {
         
         let previewHtml = '';
         if (isMarble && color) {
-            const gradient = `radial-gradient(circle at 30% 30%, ${lightenColor(color, 40)} 0%, ${color} 50%, ${darkenColor(color, 30)} 100%)`;
+            const gradient = `radial-gradient(circle at 35% 30%, #ffffff 0%, ${lightenColor(color, 35)} 15%, ${color} 50%, ${darkenColor(color, 30)} 100%)`;
             previewHtml = `<div class="collectible-detail-preview marble" style="background: ${gradient};"></div>`;
         } else if (category.images && category.images[index]) {
             const imageUrl = category.images[index];
@@ -111,6 +111,11 @@ function setupCollectibleDetailModal() {
         const wrapper = e.target.closest('.collectible-item-wrapper');
         const item = wrapper?.querySelector('.collectible-item') || e.target.closest('.collectible-item');
         if (!item) return;
+        if (item.classList.contains('locked')) {
+            try { sessionStorage.setItem('showPremiumUpsell', '1'); } catch (_) {}
+            window.location.href = 'index.html';
+            return;
+        }
         if (item.dataset.collected !== 'true') return;
         
         const categoryKey = item.dataset.category;

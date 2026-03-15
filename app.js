@@ -250,16 +250,19 @@ function renderPremiumSettings() {
     const buyBtn = document.getElementById('premiumBuyBtn');
     const restoreBtn = document.getElementById('premiumRestoreBtn');
     const devToggleBtn = document.getElementById('premiumDevToggleBtn');
+    const syncBtn = document.getElementById('premiumSyncBtn');
     if (!statusEl || !buyBtn || !restoreBtn) return;
 
     if (isPremiumMode()) {
         statusEl.textContent = 'Premium unlocked';
         buyBtn.disabled = true;
         buyBtn.textContent = 'Premium Active';
+        if (syncBtn) syncBtn.style.display = 'none';
     } else {
         statusEl.textContent = `Unlock premium for ${PREMIUM_PRICE_LABEL}`;
         buyBtn.disabled = false;
         buyBtn.textContent = `Unlock Premium (${PREMIUM_PRICE_LABEL})`;
+        if (syncBtn) syncBtn.style.display = '';
     }
 
     if (devToggleBtn) {
@@ -269,6 +272,15 @@ function renderPremiumSettings() {
             devToggleBtn.textContent = isPremiumUnlocked ? 'Dev: Disable Premium' : 'Dev: Enable Premium';
         }
     }
+}
+
+function showPremiumUpsell() {
+    showConfirmDialog(
+        `Unlock Premium for ${PREMIUM_PRICE_LABEL} to access this feature.`,
+        `Unlock (${PREMIUM_PRICE_LABEL})`
+    ).then(confirmed => {
+        if (confirmed) purchasePremiumUnlock();
+    });
 }
 
 function getAllowedCollectibleTypes() {
@@ -316,12 +328,6 @@ let isJarZoomed = false;
 let jarInspectAnimationFrame = null;
 let jarInspectPanX = 0;
 let jarInspectPanY = 0;
-let jarInspectDragStartX = 0;
-let jarInspectDragStartY = 0;
-let jarInspectDragActive = false;
-let jarInspectPointerDownX = 0;
-let jarInspectPointerDownY = 0;
-let jarInspectDragMoved = false;
 let jarInspectTransform = null;
 const jarInspectScale = 3.1;
 const jarInspectImageCache = {};
@@ -332,6 +338,8 @@ let isJarOnlyMode = false;
 let suppressJarClickUntil = 0;
 let nextMarbleAudioId = 1;
 const pairCollisionAudioCooldowns = new Map();
+let audioCooldownCleanupFrame = 0;
+let isSimulationPaused = false;
 
 const CALM_LINEAR_SPEED = 0.03;
 const CALM_ANGULAR_SPEED = 0.01;
@@ -541,6 +549,17 @@ async function init() {
     renderSyncUI();
     updateMarbleCount();
     window.onSyncAuthChange = onSyncAuthChange;
+
+    // Show premium upsell if redirected from collection page locked item
+    try {
+        if (sessionStorage.getItem('showPremiumUpsell') === '1') {
+            sessionStorage.removeItem('showPremiumUpsell');
+            if (!isPremiumMode()) setTimeout(() => {
+                document.getElementById('settingsBtn')?.click();
+                setTimeout(showPremiumUpsell, 400);
+            }, 600);
+        }
+    } catch (_) {}
 
     // Delay collectible restoration briefly after physics init.
     scheduleRestoreMarbles(500);
@@ -892,6 +911,9 @@ function renderSoundSettings() {
         </label>`;
     }).join('');
     
+    soundPicker.querySelectorAll('.sound-option.premium-locked').forEach(label => {
+        label.addEventListener('click', () => showPremiumUpsell());
+    });
     soundPicker.querySelectorAll('.sound-option-radio').forEach(input => {
         input.addEventListener('change', () => {
             const option = input.closest('.sound-option');
@@ -941,7 +963,9 @@ function applyStateData(parsed) {
     const allTypes = getAllowedCollectibleTypes();
     state.marbles = (parsed.marbles || []).map(marble => ({
         ...marble,
-        type: normalizeType(marble.type)
+        type: normalizeType(marble.type),
+        // Strip stored data URLs — they're regenerated at runtime and bloat localStorage
+        imageUrl: (marble.imageUrl && marble.imageUrl.startsWith('data:')) ? '' : (marble.imageUrl || '')
     }));
     state.collectibleType = normalizeType(parsed.collectibleType || 'marble');
     state.enabledCollectibles = Array.isArray(parsed.enabledCollectibles)
@@ -1122,6 +1146,7 @@ function renderCollectibles() {
             const option = cb.closest('.collectible-option');
             if (option?.classList.contains('premium-locked') || option?.classList.contains('free-locked')) {
                 cb.checked = false;
+                showPremiumUpsell();
                 return;
             }
             e.stopPropagation();
@@ -1140,7 +1165,7 @@ function renderCollectibles() {
         span.addEventListener('click', (e) => {
             e.preventDefault();
             const option = span.closest('.collectible-option');
-            if (option?.classList.contains('premium-locked') || option?.classList.contains('free-locked')) return;
+            if (option?.classList.contains('premium-locked') || option?.classList.contains('free-locked')) { showPremiumUpsell(); return; }
             const checkbox = option.querySelector('.collectible-option-checkbox');
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
@@ -1309,6 +1334,42 @@ function wakeMarble(marble) {
 
 function wakeAllMarbles() {
     marbleBodies.forEach(wakeMarble);
+    resumeSimulation();
+}
+
+function pauseSimulation() {
+    if (isSimulationPaused) return;
+    isSimulationPaused = true;
+    if (runner) runner.enabled = false;
+    Render.stop(render);
+    if (jarInspectAnimationFrame) {
+        cancelAnimationFrame(jarInspectAnimationFrame);
+        jarInspectAnimationFrame = null;
+    }
+    // Draw one final settled frame so the canvas isn't blank
+    requestAnimationFrame(() => {
+        if (!render?.context) return;
+        Render.world(render);
+        const containerEl = document.getElementById('jarContainer');
+        const clipW = containerEl?.offsetWidth || 280;
+        const clipH = containerEl?.offsetHeight || 350;
+        const ctx = render.context;
+        renderJarMarbles(ctx, clipW, clipH);
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.beginPath();
+        traceJarCanvasPath(ctx, clipW, clipH);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.restore();
+    });
+}
+
+function resumeSimulation() {
+    if (!isSimulationPaused) return;
+    isSimulationPaused = false;
+    if (runner) runner.enabled = true;
+    Render.run(render);
 }
 
 function computeClampState(marble, edgeLookup, bounds) {
@@ -1450,9 +1511,6 @@ function dampMarbleMotion(marble) {
     return { speed, angularSpeed: 0, isFresh: (marble._spawnFrames || 0) > 0 };
 }
 
-function applySettleAndSideNudge(marble, clampState, speed, angularSpeed, bounds) {
-    return;
-}
 
 function respawnEscapedMarble(marble, neck, bounds) {
     const newX = neck.left + 12 + Math.random() * Math.max(1, (neck.right - neck.left - 24));
@@ -1469,11 +1527,9 @@ function checkMarbleBounds() {
     updateMarbleDiscPhysics(width, height);
 }
 
-function resolveMarbleOverlaps() {
-    return;
-}
 
 function nudgeMarbles(vx, vy) {
+    resumeSimulation();
     marbleBodies.forEach((marble) => {
         marble._vx = (marble._vx || 0) + vx;
         marble._vy = (marble._vy || 0) + vy;
@@ -1520,7 +1576,7 @@ function playCollisionSound(intensity) {
     if (theme.type === 'collectible') {
         // Use collectible-based sounds (default behavior)
         const config = collectibles[state.collectibleType];
-        if (!config) return;
+        if (!config?.sounds) return;
         frequency = config.sounds.min + Math.random() * (config.sounds.max - config.sounds.min);
         waveform = theme.waveform || 'sine';
         duration = 0.1;
@@ -1868,12 +1924,9 @@ function openMarbleZoomDetails(marble) {
 
     let preview = '';
     if (isMarbleType) {
-        if (marble.marbleImage) {
-            preview = `<img class="marble-zoom-image" src="${marble.marbleImage.replace(/"/g, '&quot;')}" alt="${escapeHtml(name)}">`;
-        } else {
-            const gradient = `radial-gradient(circle at 30% 30%, ${lightenColor(marble.marbleColor || '#1AA39D', 40)} 0%, ${marble.marbleColor || '#1AA39D'} 50%, ${darkenColor(marble.marbleColor || '#1AA39D', 30)} 100%)`;
-            preview = `<div class="marble-zoom-gradient" style="background: ${gradient};"></div>`;
-        }
+        const color = marble.marbleColor || '#1AA39D';
+        const textureUrl = createMarbleTexture(color, 280);
+        preview = `<img class="marble-zoom-image" src="${textureUrl}" alt="${escapeHtml(name)}">`;
     } else if (marble.marbleImage && isSafeImageUrl(marble.marbleImage)) {
         preview = `<img class="marble-zoom-image" src="${marble.marbleImage.replace(/"/g, '&quot;')}" alt="${escapeHtml(name)}">`;
     } else {
@@ -2075,15 +2128,30 @@ function resolveDiscPair(A, B) {
     const nx = dx / dist;
     const ny = dy / dist;
     const overlap = minDist - dist;
-    const moveX = nx * overlap * 0.5;
-    const moveY = ny * overlap * 0.5;
 
-    Body.setPosition(A, { x: A.position.x - moveX, y: A.position.y - moveY });
-    Body.setPosition(B, { x: B.position.x + moveX, y: B.position.y + moveY });
-    A.positionPrev.x = A.position.x;
-    A.positionPrev.y = A.position.y;
-    B.positionPrev.x = B.position.x;
-    B.positionPrev.y = B.position.y;
+    const aAsleep = (A._sleepFrames || 0) > 6;
+    const bAsleep = (B._sleepFrames || 0) > 6;
+
+    // Treat sleeping marbles as immovable — push only the awake one
+    if (aAsleep && bAsleep) return;
+    if (aAsleep) {
+        Body.setPosition(B, { x: B.position.x + nx * overlap, y: B.position.y + ny * overlap });
+        B.positionPrev.x = B.position.x;
+        B.positionPrev.y = B.position.y;
+    } else if (bAsleep) {
+        Body.setPosition(A, { x: A.position.x - nx * overlap, y: A.position.y - ny * overlap });
+        A.positionPrev.x = A.position.x;
+        A.positionPrev.y = A.position.y;
+    } else {
+        const moveX = nx * overlap * 0.5;
+        const moveY = ny * overlap * 0.5;
+        Body.setPosition(A, { x: A.position.x - moveX, y: A.position.y - moveY });
+        Body.setPosition(B, { x: B.position.x + moveX, y: B.position.y + moveY });
+        A.positionPrev.x = A.position.x;
+        A.positionPrev.y = A.position.y;
+        B.positionPrev.x = B.position.x;
+        B.positionPrev.y = B.position.y;
+    }
 
     const relVx = (B._vx || 0) - (A._vx || 0);
     const relVy = (B._vy || 0) - (A._vy || 0);
@@ -2093,10 +2161,8 @@ function resolveDiscPair(A, B) {
     maybePlayMarbleCollisionSound(A, B, -normalSpeed);
 
     const impulse = -(1 + DISC_PAIR_RESTITUTION) * normalSpeed * 0.5;
-    A._vx -= impulse * nx;
-    A._vy -= impulse * ny;
-    B._vx += impulse * nx;
-    B._vy += impulse * ny;
+    if (!aAsleep) { A._vx -= impulse * nx; A._vy -= impulse * ny; }
+    if (!bAsleep) { B._vx += impulse * nx; B._vy += impulse * ny; }
 }
 
 function updateMarbleDiscPhysics(width, height) {
@@ -2110,6 +2176,7 @@ function updateMarbleDiscPhysics(width, height) {
 
     marbleBodies.forEach((marble) => {
         dampMarbleMotion(marble);
+        if ((marble._sleepFrames || 0) > 6) return;
         marble._vx = (marble._vx || 0) + gx;
         marble._vy = (marble._vy || 0) + gy;
         marble._vx *= DISC_AIR_DAMPING;
@@ -2139,6 +2206,7 @@ function updateMarbleDiscPhysics(width, height) {
     }
 
     marbleBodies.forEach((marble) => {
+        const wasSleeping = (marble._sleepFrames || 0) > 6;
         const speed = Math.hypot(marble._vx || 0, marble._vy || 0);
         if (speed < CALM_LINEAR_SPEED) {
             marble._sleepFrames = (marble._sleepFrames || 0) + 1;
@@ -2146,10 +2214,28 @@ function updateMarbleDiscPhysics(width, height) {
                 marble._vx = 0;
                 marble._vy = 0;
             }
+        } else if (wasSleeping && speed < CALM_LINEAR_SPEED * 8) {
+            // Sleeping marble got a tiny nudge from pair resolution — keep it asleep
+            marble._vx = 0;
+            marble._vy = 0;
         } else {
             marble._sleepFrames = 0;
         }
     });
+
+    // Evict stale audio cooldown entries every ~300 frames to prevent unbounded growth
+    audioCooldownCleanupFrame += 1;
+    if (audioCooldownCleanupFrame >= 300) {
+        audioCooldownCleanupFrame = 0;
+        const cutoff = getAudioNow() - 5000;
+        pairCollisionAudioCooldowns.forEach((time, key) => {
+            if (time < cutoff) pairCollisionAudioCooldowns.delete(key);
+        });
+    }
+
+    // Pause simulation when all marbles are fully at rest
+    const allResting = marbleBodies.length > 0 && marbleBodies.every(m => (m._sleepFrames || 0) > 6);
+    if (allResting && !isSimulationPaused) pauseSimulation();
 
 }
 
@@ -2170,10 +2256,11 @@ function updateMarbleDisplayState(body) {
     const lerp = isFresh ? DISPLAY_LERP_FRESH : DISPLAY_LERP;
 
     if (
-        speed < CALM_LINEAR_SPEED &&
-        Math.abs(dx) < DISPLAY_SNAP_DISTANCE &&
-        Math.abs(dy) < DISPLAY_SNAP_DISTANCE &&
-        Math.abs(da) < DISPLAY_SNAP_ANGLE
+        (body._sleepFrames || 0) > 6 ||
+        (speed < CALM_LINEAR_SPEED &&
+         Math.abs(dx) < DISPLAY_SNAP_DISTANCE &&
+         Math.abs(dy) < DISPLAY_SNAP_DISTANCE &&
+         Math.abs(da) < DISPLAY_SNAP_ANGLE)
     ) {
         body._displayX = body.position.x;
         body._displayY = body.position.y;
@@ -2196,16 +2283,26 @@ function drawJarMarble(ctx, body) {
     ctx.translate(x, y);
     ctx.rotate(body._displayAngle || 0);
 
-    if (config?.isMarble && body.marbleImage) {
-        const img = getJarInspectImage(body.marbleImage);
-        if (img) {
-            ctx.drawImage(img, -r, -r, r * 2, r * 2);
-        } else {
-            ctx.fillStyle = body.marbleColor || '#1AA39D';
-            ctx.beginPath();
-            ctx.arc(0, 0, r, 0, Math.PI * 2);
-            ctx.fill();
-        }
+    if (config?.isMarble) {
+        // Draw gradient directly — no async image loading, always looks 3D
+        const color = body.marbleColor || '#1AA39D';
+        const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.4, 0, 0, 0, r);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.15, lightenColor(color, 35));
+        grad.addColorStop(0.55, color);
+        grad.addColorStop(1, darkenColor(color, 30));
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+        const shine = ctx.createRadialGradient(-r * 0.4, -r * 0.45, 0, -r * 0.3, -r * 0.35, r * 0.4);
+        shine.addColorStop(0, 'rgba(255,255,255,0.75)');
+        shine.addColorStop(0.5, 'rgba(255,255,255,0.25)');
+        shine.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fillStyle = shine;
+        ctx.fill();
     } else {
         const img = getJarInspectImage(body.marbleImage);
         if (img) {
@@ -2284,6 +2381,27 @@ function findLeastOverlapSpawn(radius, bounds, neck, options = {}) {
 }
 
 // Add a collectible to the jar
+// Resolve a marble-type variant to a defined color+name from config.
+// If the saved color/name doesn't match any defined entry, assigns a random one.
+function resolveMarbleVariant(config, fallbackColor, itemName) {
+    if (!config?.isMarble) return null;
+    const names = config.itemNames || [];
+    const colors = config.fallbackColors || [];
+    // Match by name first
+    if (itemName) {
+        const idx = names.indexOf(itemName);
+        if (idx >= 0) return { color: colors[idx], itemName: names[idx] };
+    }
+    // Match by exact color
+    if (fallbackColor) {
+        const idx = colors.indexOf(fallbackColor);
+        if (idx >= 0) return { color: colors[idx], itemName: names[idx] || '' };
+    }
+    // Unknown — assign random defined color
+    const idx = Math.floor(Math.random() * colors.length);
+    return { color: colors[idx], itemName: names[idx] || '' };
+}
+
 function addMarble(type, options = {}) {
     const { playSound = true } = options;
     if (state.totalMarbles >= state.jarCapacity) return null;
@@ -2319,8 +2437,9 @@ function addMarble(type, options = {}) {
     let itemName = '';
     if (config.isMarble) {
         const colorIndex = Math.floor(Math.random() * config.fallbackColors.length);
-        fallbackColor = config.fallbackColors[colorIndex];
-        itemName = config.itemNames?.[colorIndex] || '';
+        const variant = resolveMarbleVariant(config, config.fallbackColors[colorIndex], config.itemNames?.[colorIndex]) || { color: config.fallbackColors[colorIndex], itemName: config.itemNames?.[colorIndex] || '' };
+        fallbackColor = variant.color;
+        itemName = variant.itemName;
         const textureSize = getMarbleTextureResolution(radius * 2);
         const textureUrl = createMarbleTexture(fallbackColor, textureSize, {
             marbleType: type,
@@ -2356,9 +2475,10 @@ function addMarble(type, options = {}) {
     marble._spriteBaseSize = config.isMarble
         ? getMarbleTextureResolution(radius * 2)
         : 128;
+    resumeSimulation();
     Composite.add(engine.world, marble);
     marbleBodies.push(marble);
-    
+
     // Save marble data
     state.marbles.push({ type, imageUrl, fallbackColor, radius, itemName });
     recordCollectedHistory(type, itemName, fallbackColor, imageUrl);
@@ -2462,20 +2582,9 @@ function restoreMarbles() {
             
             let renderOptions;
             
-            // Check if this is a marble type (rendered with gradients)
+            // Check if this is a marble type (rendered with gradients directly — no texture needed)
             if (config && config.isMarble) {
-                const textureSize = getMarbleTextureResolution(radius * 2);
-                const textureUrl = createMarbleTexture(marbleData.fallbackColor, textureSize, {
-                    marbleType: marbleData.type,
-                    itemName: marbleData.itemName
-                });
-                renderOptions = {
-                    sprite: {
-                        texture: textureUrl,
-                        xScale: (radius * 2) / textureSize,
-                        yScale: (radius * 2) / textureSize
-                    }
-                };
+                renderOptions = {};
             } else {
                 if (marbleData.imageUrl) {
                     renderOptions = {
@@ -2498,16 +2607,25 @@ function restoreMarbles() {
             
             marble.marbleType = marbleData.type;
             marble.marbleImage = marbleData.imageUrl;
-            marble.marbleColor = marbleData.fallbackColor;
-            marble._spriteBaseSize = (config && config.isMarble)
-                ? getMarbleTextureResolution(radius * 2)
-                : 128;
-            let itemName = marbleData.itemName;
-            if (!itemName && config) {
-                const idx = config.images?.indexOf(marbleData.imageUrl);
-                if (idx >= 0 && config.itemNames?.[idx]) itemName = config.itemNames[idx];
+            marble._spriteBaseSize = (config && config.isMarble) ? 0 : 128;
+
+            if (config && config.isMarble) {
+                // Normalize to a defined color+name — handles old/arbitrary saved state
+                const variant = resolveMarbleVariant(config, marbleData.fallbackColor, marbleData.itemName);
+                marble.marbleColor = variant.color;
+                marble.itemName = variant.itemName;
+                // Persist normalized values so next restore is also correct
+                marbleData.fallbackColor = variant.color;
+                marbleData.itemName = variant.itemName;
+            } else {
+                marble.marbleColor = marbleData.fallbackColor;
+                let itemName = marbleData.itemName;
+                if (!itemName && config) {
+                    const idx = config.images?.indexOf(marbleData.imageUrl);
+                    if (idx >= 0 && config.itemNames?.[idx]) itemName = config.itemNames[idx];
+                }
+                marble.itemName = itemName || '';
             }
-            marble.itemName = itemName || '';
             
             Composite.add(engine.world, marble);
             marbleBodies.push(marble);
@@ -2812,10 +2930,7 @@ function renderJarInspectFrame() {
 
     const viewW = viewport.clientWidth;
     const viewH = viewport.clientHeight;
-    if (viewW <= 0 || viewH <= 0) {
-        jarInspectAnimationFrame = requestAnimationFrame(renderJarInspectFrame);
-        return;
-    }
+    if (viewW <= 0 || viewH <= 0) return;
 
     const dpr = window.devicePixelRatio || 1;
     const targetW = Math.max(1, Math.floor(viewW * dpr));
@@ -2866,16 +2981,27 @@ function renderJarInspectFrame() {
         ctx.translate(x, y);
         ctx.rotate(body._displayAngle || body.angle || 0);
 
-        if (config?.isMarble && body.marbleImage) {
-            const img = getJarInspectImage(body.marbleImage);
-            if (img) {
-                ctx.drawImage(img, -r, -r, r * 2, r * 2);
-            } else {
-                ctx.fillStyle = body.marbleColor || '#1AA39D';
-                ctx.beginPath();
-                ctx.arc(0, 0, r, 0, Math.PI * 2);
-                ctx.fill();
-            }
+        if (config?.isMarble) {
+            // Draw gradient marble directly — no async image loading, no flash
+            const color = body.marbleColor || '#1AA39D';
+            const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.4, 0, 0, 0, r);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.15, lightenColor(color, 35));
+            grad.addColorStop(0.55, color);
+            grad.addColorStop(1, darkenColor(color, 30));
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            // Shine highlight
+            const shine = ctx.createRadialGradient(-r * 0.4, -r * 0.45, 0, -r * 0.3, -r * 0.35, r * 0.4);
+            shine.addColorStop(0, 'rgba(255,255,255,0.75)');
+            shine.addColorStop(0.5, 'rgba(255,255,255,0.25)');
+            shine.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fillStyle = shine;
+            ctx.fill();
         } else {
             const img = getJarInspectImage(body.marbleImage);
             if (img) {
@@ -2903,7 +3029,7 @@ function renderJarInspectFrame() {
     ctx.stroke();
     ctx.restore();
 
-    jarInspectAnimationFrame = requestAnimationFrame(renderJarInspectFrame);
+    jarInspectAnimationFrame = null;
 }
 
 function tryShowZoomedMarbleDetailsFromClientPoint(clientX, clientY) {
@@ -2941,7 +3067,7 @@ function setJarZoom(zoomed) {
 
     if (isJarZoomed) {
         jarInspectPanX = 0;
-        jarInspectPanY = 0;
+        jarInspectPanY = -99999; // clamp will snap to bottom of jar
         if (jarInspectAnimationFrame) cancelAnimationFrame(jarInspectAnimationFrame);
         jarInspectAnimationFrame = requestAnimationFrame(renderJarInspectFrame);
     } else {
@@ -2976,6 +3102,7 @@ function setupEventListeners() {
     document.getElementById('settingsCloseBtn')?.addEventListener('click', closeSettings);
     document.getElementById('premiumBuyBtn')?.addEventListener('click', purchasePremiumUnlock);
     document.getElementById('premiumRestoreBtn')?.addEventListener('click', restorePremiumPurchases);
+    document.getElementById('premiumSyncBtn')?.addEventListener('click', showPremiumUpsell);
     document.getElementById('settingsResetBtn')?.addEventListener('click', async () => {
         const confirmed = await showConfirmDialog(
             'Warning: all items will be removed from the jar.\n\nThis cannot be undone.',
@@ -2987,23 +3114,13 @@ function setupEventListeners() {
         }
     });
     document.getElementById('selectAllCollectiblesBtn')?.addEventListener('click', () => {
+        if (isCollectiblesLocked()) { showPremiumUpsell(); return; }
         setAllCollectiblesEnabled(true);
     });
     document.getElementById('deselectAllCollectiblesBtn')?.addEventListener('click', () => {
+        if (isCollectiblesLocked()) { showPremiumUpsell(); return; }
         setAllCollectiblesEnabled(false);
     });
-    if (isCollectiblesLocked()) {
-        const selectAllBtn = document.getElementById('selectAllCollectiblesBtn');
-        const deselectAllBtn = document.getElementById('deselectAllCollectiblesBtn');
-        if (selectAllBtn) {
-            selectAllBtn.disabled = true;
-            selectAllBtn.title = 'Premium required to change collectible selection.';
-        }
-        if (deselectAllBtn) {
-            deselectAllBtn.disabled = true;
-            deselectAllBtn.title = 'Premium required to change collectible selection.';
-        }
-    }
     document.getElementById('settingsClearCollectiblesBtn')?.addEventListener('click', async () => {
         const confirmed = await showConfirmDialog(
             'Warning: all items that have been tracked as collected will be cleared. Current items in the jar will stay.\n\nThis cannot be undone.',
@@ -3070,33 +3187,40 @@ function setupEventListeners() {
     });
 
     const inspectViewport = document.getElementById('jarInspectViewport');
+    let inspectPointerDownX = 0;
+    let inspectPointerDownY = 0;
+    let inspectDragStartX = 0;
+    let inspectDragStartY = 0;
+    let inspectDragActive = false;
+    let inspectDragMoved = false;
     inspectViewport?.addEventListener('pointerdown', (e) => {
-        jarInspectDragActive = true;
-        jarInspectDragMoved = false;
-        jarInspectPointerDownX = e.clientX;
-        jarInspectPointerDownY = e.clientY;
-        jarInspectDragStartX = e.clientX;
-        jarInspectDragStartY = e.clientY;
+        inspectDragActive = true;
+        inspectDragMoved = false;
+        inspectPointerDownX = e.clientX;
+        inspectPointerDownY = e.clientY;
+        inspectDragStartX = e.clientX;
+        inspectDragStartY = e.clientY;
         inspectViewport.setPointerCapture?.(e.pointerId);
     });
     inspectViewport?.addEventListener('pointermove', (e) => {
-        if (!jarInspectDragActive || !isJarZoomed) return;
-        const dx = e.clientX - jarInspectDragStartX;
-        const dy = e.clientY - jarInspectDragStartY;
-        if (!jarInspectDragMoved && Math.hypot(e.clientX - jarInspectPointerDownX, e.clientY - jarInspectPointerDownY) > 6) {
-            jarInspectDragMoved = true;
+        if (!inspectDragActive || !isJarZoomed) return;
+        const dx = e.clientX - inspectDragStartX;
+        const dy = e.clientY - inspectDragStartY;
+        if (!inspectDragMoved && Math.hypot(e.clientX - inspectPointerDownX, e.clientY - inspectPointerDownY) > 6) {
+            inspectDragMoved = true;
         }
         jarInspectPanX += dx;
         jarInspectPanY += dy;
-        jarInspectDragStartX = e.clientX;
-        jarInspectDragStartY = e.clientY;
+        inspectDragStartX = e.clientX;
+        inspectDragStartY = e.clientY;
+        renderJarInspectFrame();
     });
     const endInspectDrag = (e) => {
-        if (isJarZoomed && !jarInspectDragMoved) {
+        if (isJarZoomed && !inspectDragMoved) {
             tryShowZoomedMarbleDetailsFromClientPoint(e.clientX, e.clientY);
         }
-        jarInspectDragActive = false;
-        jarInspectDragMoved = false;
+        inspectDragActive = false;
+        inspectDragMoved = false;
         inspectViewport?.releasePointerCapture?.(e.pointerId);
     };
     inspectViewport?.addEventListener('pointerup', endInspectDrag);
