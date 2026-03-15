@@ -124,10 +124,6 @@ function getPremiumIapBridge() {
     return null;
 }
 
-function isDevPremiumToggleAvailable() {
-    const host = window.location.hostname;
-    return host === 'localhost' || host === '127.0.0.1';
-}
 
 function setPremiumUnlocked(nextValue) {
     isPremiumUnlocked = !!nextValue;
@@ -233,23 +229,12 @@ async function restorePremiumPurchases() {
     }
 }
 
-function toggleDevPremiumMode() {
-    if (!isDevPremiumToggleAvailable() || IS_PREMIUM_BUILD) return;
-    setPremiumUnlocked(!isPremiumUnlocked);
-    enforcePlanRestrictions();
-    saveState();
-    renderPremiumSettings();
-    renderCollectibles();
-    renderSoundSettings();
-    renderSyncUI();
-    updateMarbleCount();
-}
 
 function renderPremiumSettings() {
     const statusEl = document.getElementById('premiumStatus');
     const buyBtn = document.getElementById('premiumBuyBtn');
     const restoreBtn = document.getElementById('premiumRestoreBtn');
-    const devToggleBtn = document.getElementById('premiumDevToggleBtn');
+
     const syncBtn = document.getElementById('premiumSyncBtn');
     if (!statusEl || !buyBtn || !restoreBtn) return;
 
@@ -265,13 +250,7 @@ function renderPremiumSettings() {
         if (syncBtn) syncBtn.style.display = '';
     }
 
-    if (devToggleBtn) {
-        const showDevToggle = isDevPremiumToggleAvailable() && !IS_PREMIUM_BUILD;
-        devToggleBtn.style.display = showDevToggle ? 'block' : 'none';
-        if (showDevToggle) {
-            devToggleBtn.textContent = isPremiumUnlocked ? 'Dev: Disable Premium' : 'Dev: Enable Premium';
-        }
-    }
+
 }
 
 function showPremiumUpsell() {
@@ -3136,7 +3115,7 @@ function setupEventListeners() {
     const capacityInput = document.getElementById('settingsCapacityInput');
     const capacitySlider = document.getElementById('settingsCapacitySlider');
     const applyCapacityBtn = document.getElementById('settingsApplyCapacityBtn');
-    const premiumDevToggleBtn = document.getElementById('premiumDevToggleBtn');
+
     applyCountBtn?.addEventListener('click', () => {
         const value = Number(countInput?.value);
         setMarbleCount(value);
@@ -3173,7 +3152,7 @@ function setupEventListeners() {
     document.getElementById('undoMarbleBtn')?.addEventListener('click', undoLastMarble);
     document.getElementById('zoomJarBtn')?.addEventListener('click', toggleJarZoom);
     document.getElementById('menuToggleBtn')?.addEventListener('click', toggleFrontMenu);
-    premiumDevToggleBtn?.addEventListener('click', toggleDevPremiumMode);
+
     document.getElementById('menuCollectionLink')?.addEventListener('click', () => setFrontMenuOpen(false));
     document.getElementById('menuBackdrop')?.addEventListener('click', () => setFrontMenuOpen(false));
     document.getElementById('jarInspectClose')?.addEventListener('click', () => setJarZoom(false));
