@@ -96,8 +96,7 @@ const IS_PREMIUM_BUILD = false;
 const FREE_COLLECTIBLE_TYPE = 'marble';
 const FREE_SOUND_THEME = 'glass';
 const JAR_CAPACITY_SLIDER_STOPS = [10, 100, 200, 300, 400, 500];
-const PREMIUM_PRODUCT_ID = 'com.ickleruthiekins.marblejar.premium';
-const PREMIUM_PRICE_LABEL = '$1.00';
+const PREMIUM_PRICE_LABEL = '$0.99';
 const PREMIUM_STORAGE_KEY = 'marbleJarPremiumUnlocked';
 
 let isPremiumUnlocked = IS_PREMIUM_BUILD;
@@ -143,16 +142,17 @@ async function refreshPremiumEntitlement() {
 
 async function purchasePremiumUnlock() {
     try {
-        await rcPurchasePremium();
-        await refreshPremiumEntitlement();
-        enforcePlanRestrictions();
-        saveState();
-        renderPremiumSettings();
-        renderCollectibles();
-        renderSoundSettings();
-        renderSyncUI();
-        updateMarbleCount();
-        if (isPremiumMode()) alert('Premium unlocked!');
+        const result = await rcPresentPaywall();
+        if (result === 'PURCHASED' || result === 'NOT_PRESENTED') {
+            await refreshPremiumEntitlement();
+            enforcePlanRestrictions();
+            saveState();
+            renderPremiumSettings();
+            renderCollectibles();
+            renderSoundSettings();
+            renderSyncUI();
+            updateMarbleCount();
+        }
     } catch (e) {
         alert(e?.message || 'Purchase was not completed.');
     }
@@ -160,7 +160,7 @@ async function purchasePremiumUnlock() {
 
 async function restorePremiumPurchases() {
     try {
-        await rcRestorePurchases();
+        const hasPremium = await rcRestorePurchases();
         await refreshPremiumEntitlement();
         enforcePlanRestrictions();
         saveState();
@@ -169,10 +169,10 @@ async function restorePremiumPurchases() {
         renderSoundSettings();
         renderSyncUI();
         updateMarbleCount();
-        if (isPremiumMode()) {
-            alert('Purchases restored. Premium is active.');
+        if (hasPremium) {
+            alert('Purchases restored. Premium is active!');
         } else {
-            alert('No premium purchase found for this Apple ID.');
+            alert('No purchase found for this Apple ID.');
         }
     } catch (e) {
         alert(e?.message || 'Restore failed.');
@@ -184,32 +184,28 @@ function renderPremiumSettings() {
     const statusEl = document.getElementById('premiumStatus');
     const buyBtn = document.getElementById('premiumBuyBtn');
     const restoreBtn = document.getElementById('premiumRestoreBtn');
-
+    const customerCenterBtn = document.getElementById('premiumCustomerCenterBtn');
     const syncBtn = document.getElementById('premiumSyncBtn');
     if (!statusEl || !buyBtn || !restoreBtn) return;
 
     if (isPremiumMode()) {
-        statusEl.textContent = 'Premium unlocked';
-        buyBtn.disabled = true;
-        buyBtn.textContent = 'Premium Active';
+        statusEl.textContent = 'Marble Jar Pro — active';
+        buyBtn.style.display = 'none';
+        restoreBtn.style.display = 'none';
+        if (customerCenterBtn) customerCenterBtn.style.display = '';
         if (syncBtn) syncBtn.style.display = 'none';
     } else {
-        statusEl.textContent = `Unlock premium for ${PREMIUM_PRICE_LABEL}`;
-        buyBtn.disabled = false;
-        buyBtn.textContent = `Unlock Premium (${PREMIUM_PRICE_LABEL})`;
+        statusEl.textContent = `Unlock Marble Jar Pro`;
+        buyBtn.style.display = '';
+        buyBtn.textContent = `Unlock Premium`;
+        restoreBtn.style.display = '';
+        if (customerCenterBtn) customerCenterBtn.style.display = 'none';
         if (syncBtn) syncBtn.style.display = '';
     }
-
-
 }
 
 function showPremiumUpsell() {
-    showConfirmDialog(
-        `Unlock Premium for ${PREMIUM_PRICE_LABEL} to access this feature.`,
-        `Unlock (${PREMIUM_PRICE_LABEL})`
-    ).then(confirmed => {
-        if (confirmed) purchasePremiumUnlock();
-    });
+    purchasePremiumUnlock();
 }
 
 function getAllowedCollectibleTypes() {
@@ -3032,6 +3028,7 @@ function setupEventListeners() {
     document.getElementById('settingsCloseBtn')?.addEventListener('click', closeSettings);
     document.getElementById('premiumBuyBtn')?.addEventListener('click', purchasePremiumUnlock);
     document.getElementById('premiumRestoreBtn')?.addEventListener('click', restorePremiumPurchases);
+    document.getElementById('premiumCustomerCenterBtn')?.addEventListener('click', rcPresentCustomerCenter);
     document.getElementById('premiumSyncBtn')?.addEventListener('click', showPremiumUpsell);
     document.getElementById('settingsResetBtn')?.addEventListener('click', async () => {
         const confirmed = await showConfirmDialog(

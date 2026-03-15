@@ -17,6 +17,7 @@
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@capacitor/ios": "^8.2.0",
-    "@revenuecat/purchases-capacitor": "^12.2.4"
+    "@revenuecat/purchases-capacitor": "^12.2.4",
+    "@revenuecat/purchases-capacitor-ui": "^12.2.4"
   }
 }
